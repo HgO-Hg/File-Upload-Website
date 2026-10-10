@@ -1,0 +1,1758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="description" content="Hg 文件中转站 - 无验证上传/下载">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件中转站 | HgO-Hg</title>
+    <style>
+        :root {
+            --main-color: #0267f4;
+            --accent-color: #ff69b4;
+            --text-light: #f0f8ff;
+            --bg-dark: #1a1a2e;
+            --ok-color: #4ade80;
+            --warn-color: #fbbf24;
+            --err-color: #f87171;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0a1929 100%);
+            color: var(--text-light);
+            line-height: 1.6;
+            min-height: 100vh;
+            position: relative;
+            padding-top: 70px;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.75));
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto 40px;
+            padding: 20px;
+            backdrop-filter: blur(5px);
+            background: rgba(26, 26, 46, 0.7);
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(2, 103, 244, 0.3);
+        }
+
+        header {
+            text-align: center;
+            padding: 30px;
+            border-bottom: 2px solid var(--accent-color);
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .logo {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            cursor: pointer;
+        }
+
+        .logo:hover {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .logo .logo-fallback {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fff;
+            background: linear-gradient(135deg, var(--main-color), var(--accent-color));
+            box-shadow: 0 0 20px rgba(255, 105, 180, 0.5);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin: 20px 0;
+            color: var(--accent-color);
+            text-shadow: 0 0 10px rgba(255, 105, 180, 0.5);
+            position: relative;
+            display: inline-block;
+        }
+
+        h1::after {
+            content: "✦";
+            position: absolute;
+            right: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            animation: sparkle 2s infinite;
+        }
+
+        @keyframes sparkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; text-shadow: 0 0 15px #fff; }
+        }
+
+        p { margin: 15px 0; font-size: 1.1rem; }
+
+        h2 {
+            font-size: 1.5rem;
+            color: #a0f0ff;
+            margin-bottom: 15px;
+        }
+
+        h3 { font-size: 1.15rem; color: #bcd6ff; margin: 18px 0 8px; }
+
+        .content-section {
+            margin: 40px;
+            padding: 25px;
+            background: rgba(42, 42, 72, 0.5);
+            border-radius: 15px;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        .content-section:first-child { margin-top: 0; }
+
+        .fixed-header {
+            width: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            position: fixed;
+            padding: 10px 0;
+            color: #5d8be0;
+        }
+
+        .container1 {
+            max-width: 1920px;
+            width: 95%;
+            margin: 0 auto;
+            padding: 3px;
+            opacity: 0.85;
+            backdrop-filter: blur(15px);
+            background: #3485f7c3;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.641);
+        }
+
+        nav { text-align: center; }
+
+        nav a {
+            color: #fff;
+            text-decoration: none;
+            padding: 7px 25px;
+            display: inline-block;
+            transition: all 0.3s;
+            border-radius: 4px;
+        }
+
+        nav a:hover { background: rgba(255, 255, 255, 0.18); }
+
+        nav a.active {
+            background: rgba(255, 105, 180, 0.35);
+            box-shadow: 0 0 12px rgba(255, 105, 180, 0.5);
+        }
+
+        /* ===== 状态徽章 ===== */
+        .status-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            background: rgba(2, 103, 244, 0.25);
+            border: 1px solid rgba(127, 191, 255, 0.4);
+            color: #a0d0ff;
+        }
+
+        .badge .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--warn-color);
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        .badge.online { border-color: rgba(74, 222, 128, 0.6); color: #b6f7cd; }
+        .badge.online .dot { background: var(--ok-color); }
+        .badge.offline { border-color: rgba(251, 191, 36, 0.6); color: #ffe4a3; }
+        .badge.offline .dot { background: var(--warn-color); }
+
+        /* ===== 标签页 ===== */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            flex: 1 1 140px;
+            padding: 12px 20px;
+            font-size: 1.05rem;
+            cursor: pointer;
+            color: #bcd6ff;
+            background: rgba(30, 30, 60, 0.7);
+            border: 1px solid rgba(127, 191, 255, 0.25);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover { border-color: var(--accent-color); transform: translateY(-2px); }
+
+        .tab-btn.active {
+            color: #fff;
+            background: linear-gradient(135deg, rgba(2, 103, 244, 0.85), rgba(255, 105, 180, 0.65));
+            border-color: var(--accent-color);
+            box-shadow: 0 5px 18px rgba(255, 105, 180, 0.35);
+        }
+
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; animation: fadeIn 0.35s ease; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== 拖拽区 ===== */
+        .dropzone {
+            border: 2px dashed rgba(127, 191, 255, 0.5);
+            border-radius: 15px;
+            padding: 45px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(30, 30, 60, 0.45);
+        }
+
+        .dropzone:hover,
+        .dropzone.dragover {
+            border-color: var(--accent-color);
+            background: rgba(255, 105, 180, 0.12);
+            box-shadow: inset 0 0 30px rgba(255, 105, 180, 0.18);
+        }
+
+        .dropzone .dz-icon {
+            font-size: 3rem;
+            line-height: 1;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .dropzone .dz-main { font-size: 1.25rem; color: #ffd9ec; }
+        .dropzone .dz-sub { font-size: 0.92rem; color: #a0a0c0; margin-top: 6px; }
+
+        .dropzone.locked { cursor: not-allowed; opacity: 0.6; }
+
+        /* ===== 按钮 ===== */
+        .btn {
+            display: inline-block;
+            padding: 10px 22px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #fff;
+            background: rgba(2, 103, 244, 0.45);
+            border: 1px solid rgba(127, 191, 255, 0.4);
+        }
+
+        .btn:hover { transform: translateY(-3px); background: rgba(255, 105, 180, 0.4); }
+
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+        .btn.primary {
+            background: linear-gradient(135deg, var(--main-color), #7b3ff2);
+            border-color: transparent;
+        }
+
+        .btn.primary:hover { background: linear-gradient(135deg, #1a7bff, var(--accent-color)); }
+
+        .btn.ghost { background: rgba(30, 30, 60, 0.8); }
+
+        .btn.small { padding: 6px 14px; font-size: 0.86rem; }
+
+        .btn-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        /* ===== 选项区 ===== */
+        .options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            margin-top: 22px;
+            padding: 16px 18px;
+            border-radius: 12px;
+            background: rgba(30, 30, 60, 0.55);
+            border: 1px solid rgba(127, 191, 255, 0.18);
+        }
+
+        .options label { font-size: 0.95rem; color: #bcd6ff; display: flex; align-items: center; gap: 8px; }
+
+        .options select,
+        .options input[type="text"],
+        .options input[type="number"] {
+            background: rgba(10, 25, 41, 0.9);
+            color: var(--text-light);
+            border: 1px solid rgba(127, 191, 255, 0.35);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.92rem;
+        }
+
+        .options input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-color); }
+
+        /* ===== 文件队列 ===== */
+        .queue { margin-top: 25px; }
+
+        .file-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 6px 14px;
+            align-items: center;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            background: rgba(30, 30, 60, 0.7);
+            border: 1px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .file-item:hover { border-color: rgba(255, 105, 180, 0.5); }
+
+        .file-item.done { border-color: rgba(74, 222, 128, 0.55); }
+        .file-item.error { border-color: rgba(248, 113, 113, 0.6); }
+
+        .file-name {
+            font-size: 1rem;
+            color: #e6f0ff;
+            word-break: break-all;
+        }
+
+        .file-meta { font-size: 0.85rem; color: #a0a0c0; }
+
+        .file-status { font-size: 0.88rem; text-align: right; white-space: nowrap; }
+        .file-status.ok { color: var(--ok-color); }
+        .file-status.bad { color: var(--err-color); }
+        .file-status.wait { color: var(--warn-color); }
+
+        .progress-track {
+            grid-column: 1 / -1;
+            height: 8px;
+            border-radius: 50px;
+            background: rgba(10, 25, 41, 0.9);
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            border-radius: 50px;
+            background: linear-gradient(90deg, var(--main-color), var(--accent-color));
+            transition: width 0.2s linear;
+        }
+
+        .file-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        /* ===== 结果卡片 ===== */
+        .result-card {
+            margin-top: 18px;
+            padding: 16px 18px;
+            border-radius: 12px;
+            background: rgba(2, 103, 244, 0.16);
+            border: 1px solid rgba(127, 191, 255, 0.35);
+        }
+
+        .link-box {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        code, .mono {
+            font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .link-box code {
+            flex: 1 1 260px;
+            padding: 9px 12px;
+            border-radius: 8px;
+            background: rgba(10, 25, 41, 0.95);
+            border: 1px solid rgba(127, 191, 255, 0.28);
+            color: #9ee7ff;
+            word-break: break-all;
+            user-select: all;
+        }
+
+        /* ===== 取件列表 ===== */
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .link-card {
+            background: rgba(30, 30, 60, 0.7);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .link-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-color);
+            box-shadow: 0 5px 15px rgba(255, 105, 180, 0.3);
+        }
+
+        .link-card a {
+            color: #7fbfff;
+            text-decoration: none;
+            font-size: 1.1rem;
+            display: block;
+            padding: 6px;
+            transition: color 0.3s;
+            word-break: break-all;
+        }
+
+        .link-card a:hover { color: var(--accent-color); text-decoration: underline; }
+
+        .link-card .meta { font-size: 0.82rem; color: #a0a0c0; }
+
+        /* ===== 提示 ===== */
+        .notice {
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            margin-top: 18px;
+            border-left: 4px solid var(--warn-color);
+            background: rgba(251, 191, 36, 0.12);
+            color: #ffe4a3;
+        }
+
+        .notice.info { border-left-color: #7fbfff; background: rgba(127, 191, 255, 0.12); color: #cfe6ff; }
+        .notice.err { border-left-color: var(--err-color); background: rgba(248, 113, 113, 0.12); color: #ffd0d0; }
+
+        .hidden { display: none !important; }
+
+        #toast-wrap {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            padding: 12px 18px;
+            border-radius: 10px;
+            background: rgba(26, 26, 46, 0.96);
+            border: 1px solid var(--accent-color);
+            color: #ffe4f2;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease;
+            max-width: 320px;
+            font-size: 0.92rem;
+        }
+
+        .gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+        .gallery .thumb {
+            width: 100%;
+            height: 110px;
+            object-fit: cover;
+            border-radius: 8px;
+            background: rgba(10, 25, 41, 0.9);
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px 0;
+            margin-top: 50px;
+            border-top: 1px solid #3a506b;
+            font-size: 0.9rem;
+            color: #a0a0c0;
+        }
+
+        .back-top {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: rgba(2, 103, 244, 0.3);
+            border-radius: 50px;
+            text-decoration: none;
+            color: #a0f0ff;
+            transition: all 0.3s;
+        }
+
+        .back-top:hover { background: rgba(255, 105, 180, 0.3); transform: translateY(-3px); }
+
+        /* 加载动画 */
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        .loader-content { text-align: center; }
+
+        .loader-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 105, 180, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent-color);
+            animation: spin 1s ease-in-out infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            body { padding-top: 60px; }
+            .container { padding: 10px; }
+            h1 { font-size: 2rem; }
+            .content-section { margin: 20px 0; padding: 18px; }
+            nav a { padding: 7px 12px; font-size: 0.92rem; }
+            .dropzone { padding: 30px 14px; }
+            .file-item { grid-template-columns: 1fr; }
+            .file-status { text-align: left; }
+        }
+
+        @media (max-width: 480px) {
+            .grid-cards { grid-template-columns: 1fr; }
+            h1 { font-size: 1.6rem; }
+            h1::after { right: -22px; }
+        }
+    </style>
+</head>
+<body id="top">
+    <!-- 加载动画 -->
+    <div class="loader" id="loader">
+        <div class="loader-content">
+            <div class="loader-spinner"></div>
+        </div>
+    </div>
+
+    <div class="fixed-header">
+        <div class="container1">
+            <nav>
+                <a href="#" class="active">文件中转站</a>
+                <a href="#" id="navHelp">使用说明</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo" onclick="white()">
+                <img src="mahiro.jpg" alt="HgO-Hg Logo" width="80" height="80"
+                     onerror="this.outerHTML='&lt;div class=\'logo-fallback\'&gt;Hg&lt;/div&gt;'">
+            </div>
+            <h1>文件中转站</h1>
+            <p><b>无验证 · 拖进来就走 · 换个环境就能拿</b></p>
+
+            <div class="status-bar">
+                <span class="badge offline" id="connBadge"><span class="dot"></span><span id="connText">检测后端中…</span></span>
+                <span class="badge" id="modeBadge">上限 <span id="limitText">—</span></span>
+            </div>
+        </header>
+
+        <main>
+            <!-- 后端未配置提示（文案里的地址由 JS 按当前访问地址动态生成） -->
+            <div class="notice hidden" id="cfgNotice">
+                <b>演示模式</b>：还没连上后端，界面可以点、可以拖，但文件不会真的传出去。<br>
+                <span id="cfgNoticeBody"></span>
+            </div>
+
+            <!-- 后端限制提示（例如 Netlify/Vercel 约 4.5MB 的单请求上限，
+                 会让"实际可传单文件大小"远小于存储上限）文案由 JS 生成 -->
+            <div class="notice hidden" id="limitNotice">
+                <b>后端限制</b>：<span id="limitNoticeBody"></span>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="send">📤 上传文件</button>
+                <button class="tab-btn" data-tab="receive">📥 取件 / 下载</button>
+            </div>
+
+            <!-- ============ 上传面板 ============ -->
+            <section class="tab-panel active" id="panel-send">
+                <div class="content-section">
+                    <h2>投递文件</h2>
+                    <div class="dropzone" id="dropzone">
+                        <span class="dz-icon">📁</span>
+                        <div class="dz-main">把文件拖到这里，或点击选择</div>
+                        <div class="dz-sub">支持多选 · 支持大文件分片 · 不需要登录</div>
+                    </div>
+                    <input type="file" id="fileInput" multiple class="hidden">
+
+                    <div class="options">
+                        <label>保存时长
+                            <select id="ttlSelect">
+                                <option value="3600">1 小时</option>
+                                <option value="21600">6 小时</option>
+                                <option value="86400" selected>1 天</option>
+                                <option value="604800">7 天</option>
+                                <option value="2592000">30 天</option>
+                                <option value="0">永久（不自动删）</option>
+                            </select>
+                        </label>
+                        <label>分片大小
+                            <!-- 选项由 fillChunkOptions() 按后端实际能力动态生成：
+                                 受限后端（Netlify/Vercel 约 4.5MB）下只列出放得下的档位，
+                                 避免"选了 32MB 实际被夹到 3MB"这种显示与实际不符。
+                                 下面这些是探测完成前 / 无限制后端的默认值。 -->
+                            <select id="chunkSelect" title="分片大小；后端有请求体上限时会自动调整为放得下的档位">
+                                <option value="8388608">8 MB</option>
+                                <option value="16777216" selected>16 MB</option>
+                                <option value="33554432">32 MB</option>
+                            </select>
+                        </label>
+                        <label><input type="checkbox" id="autoCopy" checked> 完成后自动复制链接</label>
+                        <label>取件码
+                            <input type="text" id="roomInput" maxlength="24" placeholder="留空=公共区">
+                        </label>
+                    </div>
+
+                    <div class="btn-row">
+                        <button class="btn primary" id="pickBtn">选择文件</button>
+                        <button class="btn" id="startBtn" disabled>开始上传</button>
+                        <button class="btn ghost" id="clearBtn">清空列表</button>
+                        <button class="btn ghost hidden" id="cancelBtn">取消上传</button>
+                    </div>
+
+                    <div class="queue" id="queue"></div>
+                </div>
+            </section>
+
+            <!-- ============ 取件面板 ============ -->
+            <section class="tab-panel" id="panel-receive">
+                <div class="content-section">
+                    <h2>取件</h2>
+                    <div class="btn-row">
+                        <label>取件码
+                            <input type="text" id="roomLookup" maxlength="24" placeholder="留空=公共区">
+                        </label>
+                        <button class="btn primary" id="refreshBtn">刷新列表</button>
+                    </div>
+                    <div class="grid-cards" id="fileGrid"></div>
+                    <div class="notice info" id="gridHint">点上面的「刷新列表」拉取当前可下载的文件。</div>
+                </div>
+
+                <div class="content-section">
+                    <h2>按链接直接取</h2>
+                    <p style="font-size:0.95rem;color:#bcd6ff;">粘贴别人给你的下载直链或取件链接：</p>
+                    <div class="link-box">
+                        <input type="text" id="directInput" placeholder="https://…" style="flex:1 1 260px;padding:9px 12px;border-radius:8px;background:rgba(10,25,41,0.9);color:#f0f8ff;border:1px solid rgba(127,191,255,0.35);">
+                        <button class="btn" id="directBtn">打开</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============ 说明 ============ -->
+            <section class="content-section" id="helpSection">
+                <h2>使用说明 / 部署备注</h2>
+                <h3>这个页面怎么用</h3>
+                <p style="font-size:0.98rem;">选文件 → 开始上传 → 完成后自动复制直链，把链接发到另一台设备打开即可下载。取件码只是给文件打个分区标签，<b>不是密码</b>，知道取件码的人都能看到该分区文件，请不要当成加密手段。</p>
+                <h3>后端与容量</h3>
+                <p style="font-size:0.98rem;">页面本身是纯静态的，可放任意静态托管（GitHub Pages / Netlify 等）；真正接收文件的是后端函数（<code>worker/worker.js</code>，可跑在 Cloudflare Worker 或 Netlify / Vercel 的 Serverless 函数上），文件最终存进 S3 兼容对象存储（当前为 Backblaze B2）。顶部徽章显示的 <b>“N / 文件”是当前后端实际能接收的单文件上限</b>——如果后端平台限制了单次请求体大小（Netlify / Vercel 约 4.5MB），这个值会明显小于存储桶本身的上限。</p>
+                <h3>分片大小为什么会被自动调整</h3>
+                <p style="font-size:0.98rem;">大文件靠分片上传。选项会按后端能力自动裁剪——在单请求受限的平台上，选多大的分片也传不上去，所以直接不列出放不下的档位。另外存储侧要求<b>非末尾分片不小于 5MiB</b>，因此当后端单请求上限低于 5MiB 时（如 Netlify），分片方式无法凑出合法分片，此时可传的最大文件就等于该上限。</p>
+                <h3>安全提醒</h3>
+                <p style="font-size:0.98rem;">"无验证上传"意味着任何拿到该网址的人都能上传和下载文件。建议在服务端设置体积上限与保存时长，并定期清理；涉密或私人文件不要走这条链路。</p>
+            </section>
+        </main>
+
+        <footer>
+            <div class="content-section">
+                <a href="#top" class="back-top">↑ 回到页面的&nbsp;起点 ↑</a>
+                <p>&copy; HgO-Hg 2024-2025 梦想无线</p>
+                <p style="font-size:14px;">HgO-Hg 联系 374981268@QQ.com</p>
+            </div>
+        </footer>
+    </div>
+
+    <div id="toast-wrap" role="status" aria-live="polite" aria-atomic="false"></div>
+
+    <script>
+    /* =====================================================================
+       文件中转站 前端逻辑
+       ---------------------------------------------------------------------
+       ★ 部署前唯一需要改的地方：把 API_BASE 填成你的后端地址
+         （Cloudflare Worker 的 *.workers.dev，或 Netlify / Vercel 的站点域名）。
+         留空 = 演示模式（只走界面，不发请求）。
+       ===================================================================== */
+    const API_BASE = "https://file-relay.netlify.app";
+
+    
+
+    const EFFECTIVE_API = API_BASE;
+    const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 单文件上限 5GB（后端也应校验）
+    const MAX_QUEUE = 200;                        // 队列条数上限，防止一次拖入上千文件把 DOM 拖死
+
+    /**
+     * 有「单请求体上限」的 Serverless 托管平台。
+     *
+     * 为什么需要这张表：
+     *   · Vercel Serverless Functions 请求体上限 4.5MB，超了报
+     *     413 FUNCTION_PAYLOAD_TOO_LARGE（官方文档：
+     *     https://vercel.com/kb/guide/how-to-bypass-vercel-body-size-limit-serverless-functions）
+     *   · Netlify Functions 也有类似的小请求体限制（6MB 左右）
+     *   而这些平台上"小文件直传"（/api/upload）是把整个文件塞进**一个**请求，
+     *   必然撞墙；分片请求的每一片也受同样限制。
+     *
+     * 判据要求**域名结尾锚定**，不能用 base.includes('vercel.app')：
+     *   否则 api.vercel.app.evil.com 这种伪造地址也会命中，
+     *   导致页面在这个后端上白白把分片降到 3MB（功能无谓降级）。
+     */
+    const HOSTING_WITH_BODY_LIMIT = /^https?:\/\/([^/]*\.)?(vercel\.app|netlify\.app|netlify\.com)(:\d+)?$/i;
+
+    /**
+     * 单次请求体的安全上限（字节）。
+     * 3MB：给 multipart 编码开销留足余量，稳在各平台 4~6MB 的限制内。
+     */
+    function maxDirectUploadBytes() {
+        var base = EFFECTIVE_API || '';
+        if (HOSTING_WITH_BODY_LIMIT.test(base)) return 3 * 1024 * 1024;
+        return Infinity;              // 其它后端（Cloudflare Worker / 自建 / 本地）不受此限
+    }
+    const MAX_DIRECT_UPLOAD = maxDirectUploadBytes();
+    const LIMITED_BACKEND = Number.isFinite(MAX_DIRECT_UPLOAD);
+
+    /**
+     * 后端**自己上报**的单次请求体上限（/api/health 的 maxDirectBytes）。
+     * 0 表示不限制。探测到之前先用按域名推断的保守值。
+     * 之所以要以后端上报为准：平台限制会变，而前端按域名猜容易滞后。
+     */
+    let SERVER_MAX_DIRECT = 0;
+
+
+    // ---------- 小工具 ----------
+    const $ = (id) => document.getElementById(id);
+
+    function toast(msg, ms) {
+        const wrap = $('toast-wrap');
+        const el = document.createElement('div');
+        el.className = 'toast';
+        el.textContent = msg;
+        wrap.appendChild(el);
+        setTimeout(() => {
+            el.style.opacity = '0';
+            el.style.transition = 'opacity .4s';
+            setTimeout(() => el.remove(), 400);
+        }, ms || 2600);
+    }
+
+    function humanSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+    }
+
+    function remainText(sec) {
+        if (!sec || sec <= 0) return '永久';
+        if (sec < 3600) return Math.round(sec / 60) + ' 分钟';
+        if (sec < 86400) return Math.round(sec / 3600) + ' 小时';
+        return Math.round(sec / 86400) + ' 天';
+    }
+
+    /**
+     * 复制文本。
+     * 返回 Promise<boolean>：真的复制成功才 resolve(true)。
+     * 之前是"无论如何都 resolve"，于是复制失败了页面照样弹「链接已复制」，
+     * 用户以为复制好了，粘出来是空的。
+     */
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text)
+                .then(() => true)
+                .catch(() => copyFallback(text));
+        }
+        return Promise.resolve(copyFallback(text));
+    }
+
+    function copyFallback(text) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.top = '0';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            ta.remove();
+            return ok !== false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /** 统一的"复制并提示"入口 */
+    function copyAndToast(text, okMsg) {
+        return copyText(text).then(ok => {
+            toast(ok ? (okMsg || '链接已复制') : '复制失败，请手动选中链接复制');
+            return ok;
+        }).catch(() => {
+            toast('复制失败，请手动选中链接复制');
+            return false;
+        });
+    }
+
+    /**
+     * 只允许 http/https 的地址用于跳转与 href。
+     * 后端返回的 url 是远端数据，直接赋给 a.href / window.open 时
+     * 一个 `javascript:` 就能在页面所在源上执行脚本。
+     */
+    function safeUrl(u) {
+        const raw = String(u == null ? '' : u).trim();
+        // 必须先挡掉空串：`new URL('', base)` 会解析成"当前页面地址"，
+        // 于是缺失的 url 会变成指向自己的链接，而不是被判为非法。
+        if (!raw || !/^[a-z][a-z0-9+.-]*:|^\//i.test(raw)) return '';
+        try {
+            const parsed = new URL(raw, location.href);
+            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+            return parsed.href;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function safeName(name) {
+        return String(name).replace(/[\/\\:*?"<>|\u0000-\u001f]/g, '_').slice(0, 200) || 'file';
+    }
+
+    const isDemo = () => EFFECTIVE_API.trim() === '';
+    const api = (path) => EFFECTIVE_API.replace(/\/+$/, '') + path;
+
+    // ---------- 标签页 ----------
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            $('panel-' + btn.dataset.tab).classList.add('active');
+        });
+    });
+
+    $('navHelp').addEventListener('click', (e) => {
+        e.preventDefault();
+        $('helpSection').scrollIntoView({ behavior: 'smooth' });
+    });
+
+    // ---------- 后端探测 ----------
+    /**
+     * 演示模式提示。
+     * 以前那句"请打开本文件，把顶部 const API_BASE = "" 改成…" 对只想本地验证的人
+     * 完全无从下手。现在按当前访问地址动态给出"你该打开哪个链接"。
+     */
+    function fillDemoHint() {
+        const body = $('cfgNoticeBody');
+        if (!body) return;
+        const isLocal = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+        if (isLocal) {
+            body.textContent = '看起来你在本机调试。如果只是本地验证，不用改文件——'
+                + '先把联调后端跑起来（node dev-server.js 8787），然后在当前地址后面加上 '
+                + '?api=http://127.0.0.1:8787 重新打开即可。';
+        } else {
+            body.textContent = '这个页面还没有配置后端地址。'
+                + '部署时需要用 prepare-deploy.js 把 API_BASE 填成你的 Cloudflare Worker 地址，'
+                + '再重新上传到 GitHub Pages。';
+        }
+    }
+
+    /**
+     * 按后端实际上限重建「分片大小」下拉选项。
+     *
+     * 为什么必须动态生成：选项原来是硬编码的 8/16/32MB，
+     * 而在 Netlify 这类后端上单请求只能 4.5MB —— 用户看到"已选 16MB"，
+     * 实际却被夹到 3MB，显示与实际不符，会让人以为设置没生效。
+     * 现在直接把不可能的值从下拉里去掉，所见即所得。
+     *
+     * ⚠ 两个容易搞错的地方（线上实测踩过）：
+     *   ① 不能每次调用都无条件重建 + "尽量保留原选择"：页面启动时后端还没探测到
+     *      （此时按域名推断 3MB → 最多给到 2MB），探测到真实 4MB 后再重建时
+     *      prev=2MB 仍在候选里，于是"保留"了 2MB，永远不会升到 3MB。
+     *      所以用 chunkCapApplied 记住上次用的上限，**只有能力变化时才重建**。
+     *   ② 用户手动选过就不要覆盖（chunkPickedByUser），否则是抢用户的选择。
+     */
+    let chunkCapApplied = null;        // 上次重建时用的上限（null = 还没建过）
+    let chunkPickedByUser = false;     // 用户是否手动改过分片大小
+
+    function fillChunkOptions() {
+        const sel = $('chunkSelect');
+        if (!sel) return;
+        const cap = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
+
+        // 能力没变就不重建：否则会把探测前的临时选择"钉住"（见上面 ①）
+        if (chunkCapApplied === cap) return;
+
+        // 不限制的后端：保留常规选项
+        let sizes;
+        if (!Number.isFinite(cap)) {
+            sizes = [8388608, 16777216, 33554432];
+        } else {
+            // 受限后端：只给放得下的档位，并留出 multipart 编码开销余量（取 3/4）
+            const safe = Math.floor(cap * 3 / 4);
+            const ladder = [1048576, 2097152, 3145728, 4194304, 8388608, 16777216, 33554432];
+            sizes = ladder.filter(function (v) { return v <= safe; });
+            if (!sizes.length) {
+                // 上限特别小（例如 1MB）时至少保留一档，避免下拉为空
+                sizes = [safe];
+            }
+            // 避免最小档就是"整个上限"，再补一个更保守的档位便于用户选择
+            if (sizes.length === 1 && sizes[0] > 262144) {
+                sizes = [Math.floor(sizes[0] / 2), sizes[0]];
+            }
+        }
+
+        const prev = parseInt(sel.value, 10);
+        sel.textContent = '';
+        sizes.forEach(function (v) {
+            const o = document.createElement('option');
+            o.value = String(v);
+            o.textContent = (v >= 1048576)
+                ? (v / 1048576).toFixed(v % 1048576 === 0 ? 0 : 1) + ' MB'
+                : Math.round(v / 1024) + ' KB';
+            sel.appendChild(o);
+        });
+
+        // 用户手动选过 → 尽量尊重；否则选"放得下的最大档"，充分利用后端能力
+        let pick = null;
+        const desired = chunkPickedByUser ? prev : Math.max.apply(null, sizes);
+        for (let i = 0; i < sizes.length; i++) { if (sizes[i] === desired) { pick = sizes[i]; break; } }
+        if (pick === null) {
+            const ok = sizes.filter(function (v) { return v <= desired; });
+            pick = ok.length ? ok[ok.length - 1] : sizes[0];
+        }
+        sel.value = String(pick);
+        chunkCapApplied = cap;
+    }
+
+    /**
+     * 后端单请求体上限提示。
+     *
+     * 受限平台（Vercel 4.5MB / Netlify 约 4.5MB）单次请求收不了大文件，
+     * 而 S3/B2 又要求非末尾分片 ≥5MiB —— 两个限制叠加后，**这类后端上
+     * 可传的最大文件就是那个单请求上限**。用户必须知道这件事，
+     * 否则会看到"上传成功但最后合并失败"这种莫名其妙的错误。
+     */
+    function fillLimitHint() {
+        const box = $('limitNotice');
+        const body = $('limitNoticeBody');
+        if (!box || !body) return;
+        if (!LIMITED_BACKEND) return;   // 只有受限后端才需要解释
+
+        // 以后端上报值为准；没探测到就用按域名推断的保守值
+        const cap = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
+
+        // 从地址里取平台名，让提示更具体
+        var plat = '当前后端（Serverless 托管）';
+        if (/vercel\.app/i.test(EFFECTIVE_API)) plat = 'Vercel';
+        else if (/netlify\.(app|com)/i.test(EFFECTIVE_API)) plat = 'Netlify';
+
+        body.textContent = plat + ' 限制单个请求体大小（约 4~6MB），因此本后端'
+            + '单文件最大 ' + humanSize(cap) + '（存储要求非末尾分片至少 5MiB，'
+            + '超过平台单请求上限就只能直传、无法用分片绕过）。'
+            + '需要传更大的文件请换用 Cloudflare Worker 后端。';
+        box.classList.remove('hidden');
+    }
+
+    async function probeBackend() {
+        const badge = $('connBadge');
+        const text = $('connText');        if (isDemo()) {
+            badge.className = 'badge offline';
+            text.textContent = '演示模式（未配置后端）';
+            $('cfgNotice').classList.remove('hidden');
+            $('limitText').textContent = '未连接';
+            fillDemoHint();
+            return;
+        }
+        badge.className = 'badge';
+        text.textContent = '检测后端中…';
+        try {
+            const res = await fetch(api('/api/health'), { method: 'GET' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const info = await res.json().catch(() => ({}));
+            badge.className = 'badge online';
+            text.textContent = '后端已连接' + (info.version ? ' · v' + info.version : '');
+            // 采用后端上报的单次请求体上限（0 或缺失 = 不限制）。
+            // 这个值决定"直传还是拒绝"，比前端按域名猜测准确。
+            if (typeof info.maxDirectBytes === 'number') {
+                SERVER_MAX_DIRECT = info.maxDirectBytes;
+            }
+            // 徽章显示**用户实际能传的单文件上限**，而不是存储桶的 MAX_SIZE。
+            // 之前显示 info.maxSize（5GB）会让人以为能传 5GB，而受限后端
+            // 实际只收 4MB —— 这是明显的误导。
+            const effCap = (SERVER_MAX_DIRECT > 0)
+                ? SERVER_MAX_DIRECT
+                : (info.maxSize || 0);
+            $('limitText').textContent = effCap ? humanSize(effCap) + ' / 文件' : '未知';
+            if (SERVER_MAX_DIRECT > 0 && info.maxSize && SERVER_MAX_DIRECT < info.maxSize) {
+                $('limitText').title = '存储上限 ' + humanSize(info.maxSize)
+                    + '，但本后端单请求体上限 ' + humanSize(SERVER_MAX_DIRECT)
+                    + '，因此实际可传 ' + humanSize(SERVER_MAX_DIRECT);
+            }
+            // 选项与提示都要按"已知的上限"重建（探测到之后再算一次）
+            fillChunkOptions();
+            fillLimitHint();
+        } catch (err) {
+            badge.className = 'badge offline';
+            text.textContent = '后端不可达（' + err.message + '）';
+            $('limitText').textContent = '未知';
+        }
+    }
+
+    // ---------- 文件队列 ----------
+    let queue = []; // {id,file,status,progress,error,result,el...}
+    let uploading = false;
+    let seq = 0;
+
+    const dz = $('dropzone');
+    const fileInput = $('fileInput');
+
+    dz.addEventListener('click', () => { if (!uploading) fileInput.click(); });
+    $('pickBtn').addEventListener('click', () => { if (!uploading) fileInput.click(); });
+
+    fileInput.addEventListener('change', () => {
+        addFiles(fileInput.files);
+        fileInput.value = '';
+    });
+
+    // 记住用户手动改过分片大小：之后探测到后端上限而重建选项时，
+    // 不应覆盖用户的选择（否则等于抢用户的操作）。
+    // 注意：程序化设置 sel.value 不会触发 change 事件，所以这里只会在真实交互时置位。
+    $('chunkSelect').addEventListener('change', () => { chunkPickedByUser = true; });
+
+    ['dragenter', 'dragover'].forEach(ev => {
+        dz.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!uploading) dz.classList.add('dragover');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(ev => {
+        dz.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dz.classList.remove('dragover');
+        });
+    });
+
+    dz.addEventListener('drop', (e) => {
+        if (uploading) return;
+        if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+    });
+
+    // 防止拖到页面其他地方时浏览器直接打开文件
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
+
+    // 粘贴文件（如截图）
+    window.addEventListener('paste', (e) => {
+        if (uploading) return;
+        const items = e.clipboardData && e.clipboardData.files;
+        if (items && items.length) {
+            addFiles(items);
+            toast('已从剪贴板加入 ' + items.length + ' 个文件');
+        }
+    });
+
+    /**
+     * 分片数 × 分片大小 = 文件大小。合并请求要为每片做 2 次 R2 操作，
+     * 免费版单次调用额度是 1000，所以片数太多会在**合并阶段**才失败
+     * ——那时用户已经等了很久。这里提前提醒。
+     */
+    const MAX_SAFE_PARTS = 400;
+
+    function checkChunkPlan(list) {
+        const chunkSize = parseInt($('chunkSelect').value, 10);
+        if (!chunkSize) return;
+        let worst = 0;
+        for (const f of list) {
+            if (f.size <= chunkSize) continue;          // 走直传，不涉及分片
+            worst = Math.max(worst, Math.ceil(f.size / chunkSize));
+        }
+        if (worst <= MAX_SAFE_PARTS) return;
+        const need = Math.min(33554432, Math.max(chunkSize, Math.ceil(worst / MAX_SAFE_PARTS) * chunkSize));
+        toast('文件较大，按当前分片会切成 ' + worst + ' 片，合并可能失败。'
+            + '建议把「分片大小」改成 ' + humanSize(need) + ' 或更大。', 7000);
+    }
+
+    function addFiles(list) {
+        const files = Array.from(list || []);
+        if (!files.length) return;
+        let rejected = 0;
+        let overflow = 0;
+        files.forEach((f) => {
+            if (f.size > MAX_FILE_SIZE) { rejected++; toast('「' + f.name + '」超过单文件上限，已跳过'); return; }
+            // 队列上限：一次拖进上千个文件会让 DOM 行数爆炸（每行都有按钮与监听器）
+            if (queue.length >= MAX_QUEUE) { overflow++; return; }
+            const item = {
+                id: ++seq,
+                file: f,
+                status: 'ready',
+                progress: 0,
+                error: '',
+                result: null
+            };
+            queue.push(item);
+        });
+        if (rejected) console.warn(rejected + ' 个文件因体积被跳过');
+        if (overflow) toast('队列最多 ' + MAX_QUEUE + ' 个文件，有 ' + overflow + ' 个没加进来');
+        renderQueue();
+        $('startBtn').disabled = uploading || queue.length === 0;
+        checkChunkPlan(files);
+    }
+
+    /**
+     * 队列渲染。
+     * 早先每次进度回调都 `box.innerHTML = ''` 整表重建：
+     *   · 几十个文件并发时严重掉帧（大文件分片回调非常密集）
+     *   · 重建会摧毁焦点，正在 Tab 到「复制链接」按钮会被重置
+     *   · 已完成条目的 DOM 与事件监听每帧重造，浪费且闪烁
+     * 现在按 item.id 缓存行节点，只增量更新变化的文本/宽度，完成后才建动作区。
+     */
+    const rowCache = new Map();   // item.id -> { row, status, bar, acts }
+
+    function renderQueue() {
+        const box = $('queue');
+
+        // 清掉已经不在队列里的行
+        const alive = new Set(queue.map(i => i.id));
+        for (const [id, entry] of rowCache) {
+            if (!alive.has(id)) { entry.row.remove(); rowCache.delete(id); }
+        }
+
+        queue.forEach(item => {
+            let entry = rowCache.get(item.id);
+            if (!entry) entry = createRow(item, box);
+            updateRow(entry, item);
+        });
+    }
+
+    function createRow(item, box) {
+        const row = document.createElement('div');
+        row.className = 'file-item';
+
+        const head = document.createElement('div');
+        const nameEl = document.createElement('div');
+        nameEl.className = 'file-name';
+        nameEl.textContent = item.file.name;              // textContent 防注入
+        const metaEl = document.createElement('div');
+        metaEl.className = 'file-meta';
+        metaEl.textContent = humanSize(item.file.size);
+        head.appendChild(nameEl);
+        head.appendChild(metaEl);
+        row.appendChild(head);
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'file-status wait';
+        statusEl.textContent = '等待上传';
+        row.appendChild(statusEl);
+
+        const track = document.createElement('div');
+        track.className = 'progress-track';
+        const bar = document.createElement('div');
+        bar.className = 'progress-bar';
+        bar.style.width = '0%';
+        track.appendChild(bar);
+        row.appendChild(track);
+
+        const entry = { row, statusEl, bar, acts: null, lastStatus: null, lastProgress: -1 };
+        box.appendChild(row);
+        rowCache.set(item.id, entry);
+        return entry;
+    }
+
+    function updateRow(entry, item) {
+        // 状态文本只在变化时写，避免无意义的 DOM 变更
+        const statusMap = {
+            ready: ['等待上传', 'wait'],
+            uploading: [item.progress + '%', ''],
+            done: ['✅ 完成', 'ok'],
+            error: ['❌ 失败', 'bad']
+        };
+        const st = statusMap[item.status] || ['', ''];
+
+        if (entry.lastStatus !== item.status) {
+            entry.row.className = 'file-item'
+                + (item.status === 'done' ? ' done' : '')
+                + (item.status === 'error' ? ' error' : '');
+            entry.statusEl.className = 'file-status ' + st[1];
+            entry.lastStatus = item.status;
+
+            if (item.status === 'done') entry.bar.style.background = 'linear-gradient(90deg,#22c55e,#4ade80)';
+            else if (item.status === 'error') entry.bar.style.background = 'linear-gradient(90deg,#b91c1c,#f87171)';
+            else entry.bar.style.background = '';
+        }
+        if (entry.statusEl.textContent !== st[0]) entry.statusEl.textContent = st[0];
+
+        if (entry.lastProgress !== item.progress) {
+            entry.bar.style.width = item.progress + '%';
+            entry.lastProgress = item.progress;
+        }
+
+        // 动作区只建一次
+        if (item.status === 'done' && item.result && !entry.acts) {
+            entry.acts = buildActions(item);
+            entry.row.appendChild(entry.acts);
+        }
+
+        // 错误原因只建一次
+        if (item.status === 'error' && item.error && !entry.errEl) {
+            const err = document.createElement('div');
+            err.className = 'file-meta';
+            err.style.color = '#fca5a5';
+            err.textContent = '原因：' + item.error;
+            entry.row.appendChild(err);
+            entry.errEl = err;
+        }
+    }
+
+    function buildActions(item) {
+        const acts = document.createElement('div');
+        acts.className = 'file-actions';
+
+        const url = safeUrl(item.result.url);
+        const link = document.createElement('code');
+        link.style.flex = '1 1 240px';
+        link.style.padding = '7px 10px';
+        link.style.borderRadius = '8px';
+        link.style.background = 'rgba(10,25,41,0.95)';
+        link.style.color = '#9ee7ff';
+        link.style.wordBreak = 'break-all';
+        link.textContent = url || String(item.result.url);   // 文本展示原样，点击才走白名单
+        acts.appendChild(link);
+
+        const btnCopy = document.createElement('button');
+        btnCopy.className = 'btn small';
+        btnCopy.textContent = '复制链接';
+        btnCopy.addEventListener('click', () => copyAndToast(url || String(item.result.url)));
+        acts.appendChild(btnCopy);
+
+        const btnOpen = document.createElement('button');
+        btnOpen.className = 'btn small ghost';
+        btnOpen.textContent = '打开';
+        btnOpen.disabled = !url;
+        btnOpen.addEventListener('click', () => {
+            if (!url) { toast('这个链接不是 http/https，已拒绝打开'); return; }
+            window.open(url, '_blank', 'noopener,noreferrer');
+        });
+        acts.appendChild(btnOpen);
+
+        return acts;
+    }
+
+    $('clearBtn').addEventListener('click', () => {
+        if (uploading) { toast('上传中，先别清'); return; }
+        queue = [];
+        renderQueue();                 // 内部会清掉已不在队列里的行
+        $('startBtn').disabled = true;
+    });
+
+    $('startBtn').addEventListener('click', () => {
+        if (!uploading) startUpload();
+    });
+
+    // ---------- 上传 ----------
+    // 正在进行的 XHR 集合，供"取消上传"使用
+    let activeXhr = null;
+    let cancelRequested = false;
+
+    function setLocked(locked) {
+        uploading = locked;
+        dz.classList.toggle('locked', locked);
+        $('startBtn').disabled = locked || queue.length === 0;
+        $('pickBtn').disabled = locked;
+        $('clearBtn').disabled = locked;
+        $('startBtn').textContent = locked ? '上传中…' : '开始上传';
+        $('cancelBtn').classList.toggle('hidden', !locked);
+    }
+
+    $('cancelBtn').addEventListener('click', () => {
+        cancelRequested = true;
+        if (activeXhr) { try { activeXhr.abort(); } catch (e) { /* ignore */ } }
+        toast('已请求取消，正在停止当前上传…');
+    });
+
+    async function startUpload() {
+        const pending = queue.filter(i => i.status === 'ready' || i.status === 'error');
+        if (!pending.length) { toast('没有待上传的文件'); return; }
+
+        cancelRequested = false;
+
+        if (isDemo()) {
+            // 演示模式：走一遍动画，让本地验证能看清交互
+            setLocked(true);
+            for (const item of pending) {
+                if (cancelRequested) break;
+                item.status = 'uploading';
+                item.progress = 0;
+                renderQueue();
+                for (let p = 0; p <= 100; p += 10) {
+                    if (cancelRequested) break;
+                    item.progress = p;
+                    await new Promise(r => setTimeout(r, 90));
+                    renderQueue();
+                }
+                if (cancelRequested) { item.status = 'error'; item.error = '已取消'; renderQueue(); break; }
+                item.status = 'done';
+                item.result = { url: '（演示模式）未真正上传：' + item.file.name, key: 'demo', size: item.file.size };
+                renderQueue();
+            }
+            setLocked(false);
+            toast(cancelRequested ? '已取消' : '演示模式跑完了，配置 API_BASE 后才是真上传');
+            return;
+        }
+
+        setLocked(true);
+        const ttl = parseInt($('ttlSelect').value, 10) || 0;
+        const room = $('roomInput').value.trim();
+        // 分片大小也要受后端单请求体上限约束：受限后端下若按用户选的 32MB 切片，
+        // 每个分片请求会被 413 拒绝。这里再夹一次（选项本身已按上限重建，兜底）。
+        const selectedChunk = parseInt($('chunkSelect').value, 10);
+        const chunkSize = Math.min(selectedChunk, MAX_DIRECT_UPLOAD);
+
+        let okCount = 0, failCount = 0, cancelled = 0;
+
+        for (const item of pending) {
+            if (cancelRequested) { cancelled++; continue; }
+            item.status = 'uploading';
+            item.error = '';
+            item.progress = 0;
+            renderQueue();
+            try {
+                item.result = await uploadOne(item, { ttl, chunkSize, room, onProgress: (p) => {
+                    item.progress = p;
+                    renderQueue();
+                }});
+                item.status = 'done';
+                item.progress = 100;
+                okCount++;
+                if ($('autoCopy').checked) copyAndToast(item.result.url);
+            } catch (err) {
+                item.status = 'error';
+                item.error = (err && err.name === 'AbortError') ? '已取消' : (err.message || String(err));
+                if (err && err.name === 'AbortError') cancelled++; else failCount++;
+            }
+            renderQueue();
+        }
+
+        activeXhr = null;
+        setLocked(false);
+        const parts = ['成功 ' + okCount + ' 个'];
+        if (failCount) parts.push('失败 ' + failCount + ' 个');
+        if (cancelled) parts.push('取消 ' + cancelled + ' 个');
+        toast('上传结束：' + parts.join('，')
+            + ($('autoCopy').checked && okCount ? '（链接已复制）' : ''));
+    }
+
+    async function uploadOne(item, opts) {
+        const { file } = item;
+        const { ttl, chunkSize, room, onProgress } = opts;
+
+        // 直传阈值：后端上报的值优先（更准），没探测到才用按域名推断的保守值。
+        const directMax = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
+
+        // 后端一次收不下、又无法用分片绕过时的**明确拒绝**。
+        // 背景：S3/B2 要求非末尾分片 ≥5MiB，而受限平台的单请求上限只有 4~6MB，
+        // 两者冲突 → 超过上限的文件在受限后端上根本无法用分片完成。
+        // 与其切出一堆凑不满 5MiB 的分片、最后在合并时才失败，
+        // 不如在这里就说清楚原因和上限。
+        if (Number.isFinite(directMax) && file.size > directMax) {
+            throw new Error('这个后端单次最多接收 ' + humanSize(directMax) + '，'
+                + '而大文件在当前后端无法用分片完成（存储要求非末尾分片至少 5MiB，'
+                + '超过平台单请求上限）。请换用 Cloudflare Worker 后端，或把文件压到 '
+                + humanSize(directMax) + ' 以内。');
+        }
+
+        // 小文件走简单上传。
+        // 阈值取「分片大小」与「直传上限」的较小值：受限后端下文件再小也可能超限。
+        if (file.size <= Math.min(chunkSize, directMax)) {
+            const fd = new FormData();
+            fd.append('file', file, file.name);
+            // 必须无条件带上 ttl：选「永久」时 ttl 是 0，`if (ttl)` 会判假而不传该字段，
+            // 后端于是按默认的 1 天处理 —— "永久"从来没生效过。
+            fd.append('ttl', String(ttl));
+            if (room) fd.append('room', room);
+            const r = await xhrPut(api('/api/upload'), fd, onProgress);
+            // 后端只回 200 + {ok:true} 时，前端会显示"完成"但链接是 undefined，
+            // 大文件路径有校验、小文件路径之前漏了。
+            if (!r || !r.url) throw new Error('后端未返回下载链接');
+            return r;
+        }
+
+        // 大文件走 4 步：申请（或找回旧会话）→ 逐片传（跳过已传的）→ 合并 → 拿链接
+        const total = Math.ceil(file.size / chunkSize);
+        const sig = file.size + '-' + chunkSize;
+
+        let uploadId = null;
+        let alreadyDone = [];        // 上次已完整传好的分片序号（1-based）
+        let resumed = false;
+
+        // 断点续传第 0 步：先看这个文件 + 这个分片大小有没有没传完的会话。
+        // 先查本地缓存（最快），再问后端（换浏览器/刷新过页面也能接上）。
+        try {
+            const cached = readSessionCache(sig);
+            if (cached) {
+                const st = await jsonFetch(api('/api/parts?uploadId=' + encodeURIComponent(cached)));
+                if (st && st.ok && st.total === total) {
+                    uploadId = cached;
+                    alreadyDone = st.parts || [];
+                    resumed = alreadyDone.length > 0;
+                }
+            }
+            if (!uploadId) {
+                const loc = await jsonFetch(api('/api/locate?sig=' + encodeURIComponent(sig)));
+                if (loc && loc.found && loc.total === total) {
+                    uploadId = loc.uploadId;
+                    const st = await jsonFetch(api('/api/parts?uploadId=' + encodeURIComponent(uploadId)));
+                    alreadyDone = (st && st.parts) || [];
+                    resumed = alreadyDone.length > 0;
+                }
+            }
+        } catch (e) {
+            // 续传查询失败不影响正常上传，退回"新建会话"
+            console.warn('[文件中转站] 断点续传查询失败，将重新开始：', e && e.message);
+            uploadId = null;
+        }
+
+        if (uploadId) {
+            writeSessionCache(sig, uploadId);
+            if (resumed) {
+                toast('已找到未完成的上传，跳过前 ' + alreadyDone.length + ' 片继续', 5000);
+                onProgress(Math.floor((alreadyDone.length / total) * 100));
+            }
+        } else {
+            const initRes = await jsonFetch(api('/api/create'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: file.name, size: file.size, type: file.type || '',
+                    ttl: ttl, room: room, parts: total, chunkBytes: chunkSize
+                })
+            });
+            uploadId = initRes.uploadId;
+            if (!uploadId) throw new Error('后端未返回 uploadId');
+            writeSessionCache(sig, uploadId);
+        }
+
+        const doneSet = new Set(alreadyDone);
+        let completed = doneSet.size;
+
+        const parts = [];
+        for (let i = 0; i < total; i++) {
+            const partNo = i + 1;
+            if (doneSet.has(partNo)) {
+                parts.push({ part: partNo, size: null });   // 已传过，不重传
+                continue;
+            }
+            const start = i * chunkSize;
+            const blob = file.slice(start, Math.min(start + chunkSize, file.size));
+            const fd = new FormData();
+            fd.append('uploadId', uploadId);
+            fd.append('index', String(partNo));
+            fd.append('data', blob, 'part-' + partNo);
+            await xhrPut(api('/api/chunk'), fd, (p) => {
+                onProgress(Math.min(99, Math.floor(((completed + p / 100) / total) * 100)));
+            });
+            completed++;
+            parts.push({ part: partNo, size: blob.size });
+        }
+
+        const doneRes = await jsonFetch(api('/api/complete'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadId: uploadId, total: total })
+        });
+        onProgress(100);
+        clearSessionCache(sig);
+        if (!doneRes.url) throw new Error('后端未返回下载链接');
+        return doneRes;
+    }
+
+    // ---------- 断点续传的会话缓存 ----------
+    // 只存"文件大小-分片大小 → uploadId"这一条映射，不含文件内容。
+    // 同一个签名只有一个活跃会话，所以不会越积越多。
+    const SESSION_KEY = 'relay-upload-sessions-v1';
+
+    function readSessionCache(sig) {
+        try {
+            const raw = localStorage.getItem(SESSION_KEY);
+            if (!raw) return null;
+            const map = JSON.parse(raw);
+            return (map && map[sig]) || null;
+        } catch (e) { return null; }
+    }
+
+    function writeSessionCache(sig, uploadId) {
+        try {
+            const map = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {};
+            map[sig] = uploadId;
+            // 顺手做个上限，避免长期使用后无限增长
+            const keys = Object.keys(map);
+            if (keys.length > 20) delete map[keys[0]];
+            localStorage.setItem(SESSION_KEY, JSON.stringify(map));
+        } catch (e) { /* 隐私模式下 localStorage 可能不可用，忽略 */ }
+    }
+
+    function clearSessionCache(sig) {
+        try {
+            const map = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}') || {};
+            delete map[sig];
+            localStorage.setItem(SESSION_KEY, JSON.stringify(map));
+        } catch (e) { /* ignore */ }
+    }
+
+    function xhrPut(url, formData, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            activeXhr = xhr;
+            xhr.open('POST', url, true);
+            // 超时保护：网络被丢包（既不 RST 也不响应）时，以前会永远挂在这里，
+            // 按钮一直是"上传中…"且无法取消，只能刷新页面。
+            xhr.timeout = 20 * 60 * 1000;
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable && onProgress) {
+                    onProgress(Math.round((e.loaded / e.total) * 100));
+                }
+            });
+            xhr.addEventListener('load', () => {
+                activeXhr = null;
+                let data = null;
+                try { data = JSON.parse(xhr.responseText); } catch (e) { /* 非 JSON */ }
+                if (xhr.status >= 200 && xhr.status < 300 && data) resolve(data);
+                else reject(new Error((data && data.error) || ('HTTP ' + xhr.status)));
+            });
+            xhr.addEventListener('error', () => { activeXhr = null; reject(new Error('网络错误 / 跨域被拦')); });
+            xhr.addEventListener('timeout', () => { activeXhr = null; reject(new Error('上传超时（20 分钟无进展），已停止')); });
+            xhr.addEventListener('abort', () => {
+                activeXhr = null;
+                const e = new Error('已取消');
+                e.name = 'AbortError';
+                reject(e);
+            });
+            xhr.send(formData);
+        });
+    }
+
+    async function jsonFetch(url, init) {
+        const res = await fetch(url, init);
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+        return data || {};
+    }
+
+    // ---------- 取件 ----------
+    $('refreshBtn').addEventListener('click', loadList);
+    $('directBtn').addEventListener('click', () => {
+        const v = $('directInput').value.trim();
+        if (!v) { toast('先粘贴一个链接'); return; }
+        const safe = safeUrl(v);
+        if (!safe) { toast('只允许 http/https 链接'); return; }
+        window.open(safe, '_blank', 'noopener,noreferrer');
+    });
+
+    async function loadList() {
+        const grid = $('fileGrid');
+        const hint = $('gridHint');
+        if (isDemo()) {
+            hint.className = 'notice';
+            hint.textContent = '演示模式：还没配置后端地址，无法拉取列表。';
+            return;
+        }
+        const room = $('roomLookup').value.trim();
+        grid.innerHTML = '<div class="notice info">加载中…</div>';
+        try {
+            const data = await jsonFetch(api('/api/list' + (room ? '?room=' + encodeURIComponent(room) : '')));
+            const files = data.files || [];
+            grid.innerHTML = '';
+            if (!files.length) {
+                hint.className = 'notice info';
+                hint.textContent = '这个分区暂时没有文件。';
+                return;
+            }
+            hint.className = 'notice info';
+            hint.textContent = '共 ' + files.length + ' 个文件，过期时间见各卡片。';
+            files.forEach(f => {
+                const card = document.createElement('div');
+                card.className = 'link-card';
+
+                const safe = safeUrl(f.url);
+                const a = document.createElement('a');
+                a.textContent = f.name || f.key;          // textContent，防注入
+                if (safe) {
+                    a.href = safe;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';        // 不给新页面 opener 权限
+                } else {
+                    a.title = '这个地址不是 http/https，已拒绝跳转';
+                }
+                card.appendChild(a);
+
+                const meta = document.createElement('div');
+                meta.className = 'meta';
+                meta.textContent = humanSize(f.size || 0) + ' · ' + remainText(f.expiresIn);
+                card.appendChild(meta);
+
+                const btn = document.createElement('button');
+                btn.className = 'btn small';
+                btn.style.marginTop = '10px';
+                btn.textContent = '复制链接';
+                btn.addEventListener('click', () => copyAndToast(f.url, '已复制'));
+                btn.disabled = !safe;
+                card.appendChild(btn);
+
+                grid.appendChild(card);
+            });
+        } catch (err) {
+            grid.innerHTML = '';
+            hint.className = 'notice err';
+            hint.textContent = '拉取失败：' + err.message;
+        }
+    }
+
+    // ---------- 鼠标跟随粒子（沿用原站特效） ----------
+    (function particles() {
+        const body = document.body;
+        const list = [];
+        body.addEventListener('mousemove', (e) => {
+            if (Math.random() > 0.85) create(e.clientX, e.clientY);
+        });
+
+        function create(x, y) {
+            const p = document.createElement('div');
+            p.style.cssText = 'position:fixed;width:12px;height:12px;border-radius:50%;pointer-events:none;z-index:9998;'
+                + 'left:' + x + 'px;top:' + y + 'px;opacity:0.8;background:'
+                + (Math.random() > 0.5 ? '#ff69b4' : '#0267f4') + ';';
+            body.appendChild(p);
+            list.push({ el: p, x: x, y: y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, life: 30 });
+            if (list.length > 50) list.shift().el.remove();
+        }
+
+        (function frame() {
+            for (let i = list.length - 1; i >= 0; i--) {
+                const p = list[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                if (p.life <= 0) {
+                    p.el.remove();
+                    list.splice(i, 1);
+                } else {
+                    p.el.style.opacity = p.life / 30;
+                    p.el.style.left = p.x + 'px';
+                    p.el.style.top = p.y + 'px';
+                }
+            }
+            requestAnimationFrame(frame);
+        })();
+    })();
+
+    // ---------- 隐藏加载动画 ----------
+    function hideLoader() {
+        const loader = $('loader');
+        if (!loader) return;
+        loader.style.opacity = '0';
+        setTimeout(() => { loader.style.display = 'none'; }, 500);
+    }
+    window.addEventListener('load', () => setTimeout(hideLoader, 600));
+    setTimeout(hideLoader, 3000); // 兜底
+
+    // ---------- 原站保留的小彩蛋 ----------
+    function white() {
+        document.body.style.transition = 'background 0.6s';
+        document.body.style.background = 'linear-gradient(135deg,#ffffff 0%,#dbe9ff 100%)';
+        document.body.style.color = '#1a1a2e';
+        setTimeout(() => {
+            document.body.style.background = '';
+            document.body.style.color = '';
+        }, 1200);
+    }
+
+    // ---------- 启动 ----------
+    // 先按"探测前"的保守值把选项与提示建好（受限后端下避免闪一下 32MB），
+    // probeBackend() 拿到后端上报值后会再重建一次。
+    fillChunkOptions();
+    fillLimitHint();
+    probeBackend();
+    if (isDemo()) $('startBtn').disabled = true;
+
+    // 上传中离开页面给个提醒：队列与进度都在内存里，刷新就全没了
+    window.addEventListener('beforeunload', (e) => {
+        if (!uploading) return;
+        e.preventDefault();
+        e.returnValue = '还有文件正在上传，确定离开吗？';
+        return e.returnValue;
+    });
+
+    // 支持 ?tab=receive 直接打开取件页（方便收藏成书签）
+    if (new URLSearchParams(location.search).get('tab') === 'receive') {
+        const btn = document.querySelector('.tab-btn[data-tab="receive"]');
+        if (btn) btn.click();
+    }
+    </script>
+</body>
+</html>
