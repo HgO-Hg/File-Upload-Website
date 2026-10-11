@@ -611,7 +611,7 @@
             <p><b>无验证 · 拖进来就走 · 换个环境就能拿</b></p>
 
             <div class="status-bar">
-                <span class="badge offline" id="connBadge"><span class="dot"></span><span id="connText">检测后端中…</span></span>
+                <span class="badge offline" id="connBadge"><span class="dot"></span><span id="connText">检测服务中…</span></span>
                 <span class="badge" id="modeBadge">上限 <span id="limitText">—</span></span>
             </div>
         </header>
@@ -619,14 +619,14 @@
         <main>
             <!-- 后端未配置提示（文案里的地址由 JS 按当前访问地址动态生成） -->
             <div class="notice hidden" id="cfgNotice">
-                <b>演示模式</b>：还没连上后端，界面可以点、可以拖，但文件不会真的传出去。<br>
+                <b>演示模式</b>：还没连上服务，界面可以点、可以拖，但文件不会真的传出去。<br>
                 <span id="cfgNoticeBody"></span>
             </div>
 
             <!-- 后端限制提示（例如 Netlify/Vercel 约 4.5MB 的单请求上限，
                  会让"实际可传单文件大小"远小于存储上限）文案由 JS 生成 -->
             <div class="notice hidden" id="limitNotice">
-                <b>后端限制</b>：<span id="limitNoticeBody"></span>
+                <b>容量限制</b>：<span id="limitNoticeBody"></span>
             </div>
 
             <div class="tabs">
@@ -709,19 +709,19 @@
                 </div>
             </section>
 
-            <!-- ============ 说明 ============ -->
+            <!-- ============ 使用说明（面向访客，不放任何部署/后端信息）============ -->
             <section class="content-section" id="helpSection">
-                <h2>使用说明 / 部署备注</h2>
-                <h3>这个页面怎么用</h3>
-                <p style="font-size:0.98rem;">选文件 → 开始上传 → 完成后自动复制直链，把链接发到另一台设备打开即可下载。取件码只是给文件打个分区标签，<b>不是密码</b>，知道取件码的人都能看到该分区文件，请不要当成加密手段。</p>
-                <h3>后端与容量</h3>
-                <p style="font-size:0.98rem;">页面本身是纯静态的，可放任意静态托管（GitHub Pages / Netlify 等）；真正接收文件的是后端函数（<code>worker/worker.js</code>，可跑在 Cloudflare Worker 或 Netlify / Vercel 的 Serverless 函数上），文件最终存进 S3 兼容对象存储（当前为 Backblaze B2）。顶部徽章显示的 <b>“N / 文件”是当前实际可传的单文件上限</b>。</p>
-                <h3>为什么能传大文件（直传模式）</h3>
-                <p style="font-size:0.98rem;">托管平台的函数有请求体上限（Netlify / Vercel 约 4~6MB），数据若经函数中转，文件就不能超过这个值；而存储又要求非末尾分片不小于 <b>5MiB</b>，两者直接冲突。所以本站在支持的后端上采用<b>浏览器直传</b>：后端只签发一个短期凭证，字节由浏览器<b>直接</b>发给对象存储，不经过函数。于是平台上限与文件大小彻底无关，<b>分片大小可以取到 5~128MiB</b>（5MiB 是存储侧的下限）。</p>
-                <h3>分片大小为什么会自动调整</h3>
-                <p style="font-size:0.98rem;">选项按后端实际能力生成：直传后端给 5~128MiB 的合理档位；若后端不支持直传（或字节必须经函数中转），则只列出真正放得下的档位，避免"选了 32MB 实际被夹到 3MB"这种显示与实际不符。片小则请求多，片大则断点续传粒度粗、浏览器内存吃紧，一般 16~32MiB 较均衡。</p>
+                <h2>使用说明</h2>
+                <h3>三步传文件</h3>
+                <p style="font-size:0.98rem;">① 把文件拖进上面的虚线框（或点“选择文件”）→ ② 点“开始上传”，等进度走完 → ③ 链接会自动复制，把它发到另一台设备打开即可下载。</p>
+                <h3>保存时长</h3>
+                <p style="font-size:0.98rem;">上传前可在“保存时长”里选择 1 小时到 30 天，或选<b>永久</b>。到期后链接自动失效，文件会被清理，请及时下载。</p>
+                <h3>分片大小</h3>
+                <p style="font-size:0.98rem;">大文件会被切成多片分别上传，再自动合并成完整文件，你不需要做任何额外操作。分片越大请求越少、上传越快；分片越小则中断后续传的粒度越细。不确定就用默认值。</p>
+                <h3>取件码</h3>
+                <p style="font-size:0.98rem;">取件码只是给文件打个<b>分区标签</b>，方便把同一批文件归到一起，<b>它不是一个密码</b>——知道取件码的人都能看到该分区的文件列表。请勿把它当作加密或权限手段。</p>
                 <h3>安全提醒</h3>
-                <p style="font-size:0.98rem;">"无验证上传"意味着任何拿到该网址的人都能上传和下载文件。建议在服务端设置体积上限与保存时长，并定期清理；涉密或私人文件不要走这条链路。</p>
+                <p style="font-size:0.98rem;">本站<b>无需登录、不做验证</b>，这意味着任何拿到网址的人都能上传和下载文件。请勿上传涉密、隐私或重要文件；公开的链接也请只发给你信任的人。</p>
             </section>
         </main>
 
@@ -1054,7 +1054,7 @@
                 + '先把联调后端跑起来（node dev-server.js 8787），然后在当前地址后面加上 '
                 + '?api=http://127.0.0.1:8787 重新打开即可。';
         } else {
-            body.textContent = '这个页面还没有配置后端地址。'
+            body.textContent = '这个页面还没有连接服务。';
                 + '部署时需要用 prepare-deploy.js 把 API_BASE 填成你的 Cloudflare Worker 地址，'
                 + '再重新上传到 GitHub Pages。';
         }
@@ -1169,15 +1169,9 @@
         // 以后端上报值为准；没探测到就用按域名推断的保守值
         const cap = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
 
-        // 从地址里取平台名，让提示更具体
-        var plat = '当前后端（Serverless 托管）';
-        if (/vercel\.app/i.test(EFFECTIVE_API)) plat = 'Vercel';
-        else if (/netlify\.(app|com)/i.test(EFFECTIVE_API)) plat = 'Netlify';
-
-        body.textContent = plat + ' 限制单个请求体大小（约 4~6MB），因此本后端'
-            + '单文件最大 ' + humanSize(cap) + '（存储要求非末尾分片至少 5MiB，'
-            + '超过平台单请求上限就只能直传、无法用分片绕过）。'
-            + '需要传更大的文件请换用 Cloudflare Worker 后端。';
+        // 面向用户的说法：不提平台/后端/分片实现，只说"当前最多能传多大"与怎么办
+        body.textContent = '当前服务单文件最大 ' + humanSize(cap)
+            + '。需要传更大的文件时，请先压缩或拆分后再上传。';
         box.classList.remove('hidden');
     }
 
@@ -1185,14 +1179,14 @@
         const badge = $('connBadge');
         const text = $('connText');        if (isDemo()) {
             badge.className = 'badge offline';
-            text.textContent = '演示模式（未配置后端）';
+            text.textContent = '演示模式（未连接服务）';
             $('cfgNotice').classList.remove('hidden');
             $('limitText').textContent = '未连接';
             fillDemoHint();
             return;
         }
         badge.className = 'badge';
-        text.textContent = '检测后端中…';
+        text.textContent = '检测服务中…';
         try {
             const res = await fetch(api('/api/health'), { method: 'GET' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1203,7 +1197,7 @@
                 SERVER_UPLOAD_MODE = info.uploadMode;
             }
             // 徽章上标出模式，便于一眼看出走的是哪条路
-            text.textContent = '后端已连接' + (info.version ? ' · v' + info.version : '')
+            text.textContent = '服务已连接' + (info.version ? ' · v' + info.version : '')
                 + (SERVER_UPLOAD_MODE === 'direct' ? ' · 直传' : '');
             // 采用后端上报的单次请求体上限（0 或缺失 = 不限制）。
             // ⚠ 直传模式下这个值不再限制文件大小（字节不经后端），
@@ -1229,7 +1223,7 @@
             fillLimitHint();
         } catch (err) {
             badge.className = 'badge offline';
-            text.textContent = '后端不可达（' + err.message + '）';
+            text.textContent = '服务不可达（' + err.message + '）';
             $('limitText').textContent = '未知';
         }
     }
@@ -1594,16 +1588,12 @@
         // 直传阈值：后端上报的值优先（更准），没探测到才用按域名推断的保守值。
         const directMax = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
 
-        // 后端一次收不下、又无法用分片绕过时的**明确拒绝**。
-        // 背景：S3/B2 要求非末尾分片 ≥5MiB，而受限平台的单请求上限只有 4~6MB，
-        // 两者冲突 → 超过上限的文件在受限后端上根本无法用分片完成。
-        // 与其切出一堆凑不满 5MiB 的分片、最后在合并时才失败，
-        // 不如在这里就说清楚原因和上限。
+        // 超出当前服务上限时的**明确拒绝**（面向用户，不提实现细节）。
+        // 之所以要在这里拦住而不是让它传：受限配置下大文件必然在中途失败，
+        // 提前说清上限比让用户等到最后才发现要友好得多。
         if (Number.isFinite(directMax) && file.size > directMax) {
-            throw new Error('这个后端单次最多接收 ' + humanSize(directMax) + '，'
-                + '而大文件在当前后端无法用分片完成（存储要求非末尾分片至少 5MiB，'
-                + '超过平台单请求上限）。请换用 Cloudflare Worker 后端，或把文件压到 '
-                + humanSize(directMax) + ' 以内。');
+            throw new Error('文件太大：当前服务单文件最大 ' + humanSize(directMax)
+                + '，这个文件有 ' + humanSize(file.size) + '。请压缩或拆分后再上传。');
         }
 
         // 小文件走简单上传。
@@ -1807,7 +1797,7 @@
         const hint = $('gridHint');
         if (isDemo()) {
             hint.className = 'notice';
-            hint.textContent = '演示模式：还没配置后端地址，无法拉取列表。';
+            hint.textContent = '演示模式：还没连接服务，无法拉取列表。';
             return;
         }
         const room = $('roomLookup').value.trim();
