@@ -658,10 +658,11 @@
                         </label>
                         <label>分片大小
                             <!-- 选项由 fillChunkOptions() 按后端实际能力动态生成：
-                                 受限后端（Netlify/Vercel 约 4.5MB）下只列出放得下的档位，
-                                 避免"选了 32MB 实际被夹到 3MB"这种显示与实际不符。
-                                 下面这些是探测完成前 / 无限制后端的默认值。 -->
-                            <select id="chunkSelect" title="分片大小；后端有请求体上限时会自动调整为放得下的档位">
+                                 · 直传后端（浏览器直传存储）→ 5~128MiB，下限是存储硬要求
+                                 · 受限后端（Netlify/Vercel 约 4.5MB）→ 只列放得下的档位，
+                                   避免"选了 32MB 实际被夹到 3MB"这种显示与实际不符
+                                 下面这些是 JS 重建前的兜底值，正常会被替换。 -->
+                            <select id="chunkSelect" title="分片大小；会根据后端能力自动调整为可用的档位">
                                 <option value="8388608">8 MB</option>
                                 <option value="16777216" selected>16 MB</option>
                                 <option value="33554432">32 MB</option>
@@ -714,9 +715,11 @@
                 <h3>这个页面怎么用</h3>
                 <p style="font-size:0.98rem;">选文件 → 开始上传 → 完成后自动复制直链，把链接发到另一台设备打开即可下载。取件码只是给文件打个分区标签，<b>不是密码</b>，知道取件码的人都能看到该分区文件，请不要当成加密手段。</p>
                 <h3>后端与容量</h3>
-                <p style="font-size:0.98rem;">页面本身是纯静态的，可放任意静态托管（GitHub Pages / Netlify 等）；真正接收文件的是后端函数（<code>worker/worker.js</code>，可跑在 Cloudflare Worker 或 Netlify / Vercel 的 Serverless 函数上），文件最终存进 S3 兼容对象存储（当前为 Backblaze B2）。顶部徽章显示的 <b>“N / 文件”是当前后端实际能接收的单文件上限</b>——如果后端平台限制了单次请求体大小（Netlify / Vercel 约 4.5MB），这个值会明显小于存储桶本身的上限。</p>
-                <h3>分片大小为什么会被自动调整</h3>
-                <p style="font-size:0.98rem;">大文件靠分片上传。选项会按后端能力自动裁剪——在单请求受限的平台上，选多大的分片也传不上去，所以直接不列出放不下的档位。另外存储侧要求<b>非末尾分片不小于 5MiB</b>，因此当后端单请求上限低于 5MiB 时（如 Netlify），分片方式无法凑出合法分片，此时可传的最大文件就等于该上限。</p>
+                <p style="font-size:0.98rem;">页面本身是纯静态的，可放任意静态托管（GitHub Pages / Netlify 等）；真正接收文件的是后端函数（<code>worker/worker.js</code>，可跑在 Cloudflare Worker 或 Netlify / Vercel 的 Serverless 函数上），文件最终存进 S3 兼容对象存储（当前为 Backblaze B2）。顶部徽章显示的 <b>“N / 文件”是当前实际可传的单文件上限</b>。</p>
+                <h3>为什么能传大文件（直传模式）</h3>
+                <p style="font-size:0.98rem;">托管平台的函数有请求体上限（Netlify / Vercel 约 4~6MB），数据若经函数中转，文件就不能超过这个值；而存储又要求非末尾分片不小于 <b>5MiB</b>，两者直接冲突。所以本站在支持的后端上采用<b>浏览器直传</b>：后端只签发一个短期凭证，字节由浏览器<b>直接</b>发给对象存储，不经过函数。于是平台上限与文件大小彻底无关，<b>分片大小可以取到 5~128MiB</b>（5MiB 是存储侧的下限）。</p>
+                <h3>分片大小为什么会自动调整</h3>
+                <p style="font-size:0.98rem;">选项按后端实际能力生成：直传后端给 5~128MiB 的合理档位；若后端不支持直传（或字节必须经函数中转），则只列出真正放得下的档位，避免"选了 32MB 实际被夹到 3MB"这种显示与实际不符。片小则请求多，片大则断点续传粒度粗、浏览器内存吃紧，一般 16~32MiB 较均衡。</p>
                 <h3>安全提醒</h3>
                 <p style="font-size:0.98rem;">"无验证上传"意味着任何拿到该网址的人都能上传和下载文件。建议在服务端设置体积上限与保存时长，并定期清理；涉密或私人文件不要走这条链路。</p>
             </section>
@@ -725,7 +728,7 @@
         <footer>
             <div class="content-section">
                 <a href="#top" class="back-top">↑ 回到页面的&nbsp;起点 ↑</a>
-                <p>&copy; HgO-Hg 2024-2025 梦想无线</p>
+                <p>&copy; HgO-Hg 2024-2026 梦想无线</p>
                 <p style="font-size:14px;">HgO-Hg 联系 374981268@QQ.com</p>
             </div>
         </footer>
@@ -794,10 +797,13 @@
     let SERVER_UPLOAD_MODE = 'proxy';
 
     /**
-     * 直传模式的单片上限：S3/B2 规定"非末尾分片 ≥5MiB"，但单片太大又不利于
-     * 断点续传，所以取 16MiB 作为平衡值（与后端 partSizeSuggested 默认一致）。
+     * 直传模式的单片上限与默认值。
+     *   · 下限由存储决定：非末尾分片必须 ≥5MiB（S3/B2 硬要求）
+     *   · 上限取 128MiB：片太小会浪费请求数，片太大则断点续传粒度粗、浏览器内存吃紧
      */
+    const DIRECT_PART_MAX = 128 * 1024 * 1024;
     const DIRECT_PART_BYTES = 16 * 1024 * 1024;
+    const MIN_STORAGE_PART_BYTES = 5 * 1024 * 1024;
 
     /**
      * 直传模式上传一个文件（B 方案）。
@@ -816,9 +822,12 @@
         const { file } = item;
         const { ttl, chunkSize, room, onProgress } = opts;
 
-        const partBytes = Math.min(
-            DIRECT_PART_BYTES,
-            Math.max(5 * 1024 * 1024, chunkSize || 0)   // 不能小于 5MiB（存储硬要求）
+        // 用用户在下拉里选的档位（下面拉是 5~128MiB 的合理档位）。
+        // 之前这里写死 16MiB，等于完全忽略了用户的选择。
+        // 夹到 [5MiB, 128MiB]：下限是存储硬要求，上限防止单片过大。
+        const partBytes = Math.max(
+            MIN_STORAGE_PART_BYTES,
+            Math.min(DIRECT_PART_MAX, chunkSize || DIRECT_PART_BYTES)
         );
         const total = Math.max(1, Math.ceil(file.size / partBytes));
 
@@ -1072,14 +1081,26 @@
     function fillChunkOptions() {
         const sel = $('chunkSelect');
         if (!sel) return;
-        const cap = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
+        // 直传模式下分片由浏览器直接发给存储，平台上限不再相关；
+        // 而存储要求"非末尾分片 ≥5MiB"，所以档位必须从 5MiB 起步。
+        const cap = (SERVER_UPLOAD_MODE === 'direct')
+            ? DIRECT_PART_MAX
+            : ((SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD);
 
         // 能力没变就不重建：否则会把探测前的临时选择"钉住"（见上面 ①）
         if (chunkCapApplied === cap) return;
 
-        // 不限制的后端：保留常规选项
         let sizes;
-        if (!Number.isFinite(cap)) {
+        if (SERVER_UPLOAD_MODE === 'direct') {
+            // 直传：下限 5MiB（存储硬要求），上限 128MiB。
+            // 片太小会浪费请求数，片太大则断点续传粒度粗、浏览器内存吃紧。
+            const ladder = [
+                5 * 1048576, 8 * 1048576, 16 * 1048576,
+                32 * 1048576, 64 * 1048576, 128 * 1048576
+            ];
+            sizes = ladder.filter(function (v) { return v <= DIRECT_PART_MAX; });
+        } else if (!Number.isFinite(cap)) {
+            // 不受限的代理后端（例如 Cloudflare Worker）：保留常规选项
             sizes = [8388608, 16777216, 33554432];
         } else {
             // 受限后端：只给放得下的档位，并留出 multipart 编码开销余量（取 3/4）
@@ -1107,9 +1128,15 @@
             sel.appendChild(o);
         });
 
-        // 用户手动选过 → 尽量尊重；否则选"放得下的最大档"，充分利用后端能力
+        // 用户手动选过 → 尊重其选择；否则取一个**均衡的默认值**（16MiB），
+        // 而不是最大档。原因：分片越大，浏览器发送时占用内存越多（整片先进内存），
+        // 断点续传的粒度也越粗。想要更少请求数的用户可以自己调大。
         let pick = null;
-        const desired = chunkPickedByUser ? prev : Math.max.apply(null, sizes);
+        const desired = chunkPickedByUser
+            ? prev                                              // 用户选的
+            : (sizes.indexOf(DIRECT_PART_BYTES) >= 0
+                ? DIRECT_PART_BYTES                             // 有 16MiB 档就默认它
+                : Math.max.apply(null, sizes));                 // 否则取最大可用档
         for (let i = 0; i < sizes.length; i++) { if (sizes[i] === desired) { pick = sizes[i]; break; } }
         if (pick === null) {
             const ok = sizes.filter(function (v) { return v <= desired; });
