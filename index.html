@@ -785,6 +785,136 @@
      */
     let SERVER_MAX_DIRECT = 0;
 
+    /**
+     * 后端上报的上传模式：
+     *   'direct' —— 浏览器拿预签名凭证直传对象存储（不受平台请求体限制，推荐）
+     *   'proxy'  —— 字节经后端中转（受 maxDirectBytes 约束）
+     * 探测到之前按 'proxy' 处理（保守，且与旧行为一致）。
+     */
+    let SERVER_UPLOAD_MODE = 'proxy';
+
+    /**
+     * 直传模式的单片上限：S3/B2 规定"非末尾分片 ≥5MiB"，但单片太大又不利于
+     * 断点续传，所以取 16MiB 作为平衡值（与后端 partSizeSuggested 默认一致）。
+     */
+    const DIRECT_PART_BYTES = 16 * 1024 * 1024;
+
+    /**
+     * 直传模式上传一个文件（B 方案）。
+     *
+     * 流程与代理模式一致（创建会话 → 逐片传 → 合并），区别只在于
+     * **字节由浏览器直接 PUT 到存储**，只把签名请求与结果回报发给后端：
+     *   1. POST /api/direct/create  建会话，拿 uploadId
+     *   2. POST /api/direct/part    拿该片的预签名 URL + 头
+     *   3. PUT  <预签名 URL>         ← 字节走这里，不经过后端
+     *   4. POST /api/direct/progress 回报（服务端会 HEAD 核实）
+     *   5. POST /api/direct/finish  服务端复制合并，返回下载直链
+     *
+     * 这样托管平台的请求体上限（Netlify 4MB 就 413）与文件大小彻底无关。
+     */
+    async function uploadOneDirect(item, opts) {
+        const { file } = item;
+        const { ttl, chunkSize, room, onProgress } = opts;
+
+        const partBytes = Math.min(
+            DIRECT_PART_BYTES,
+            Math.max(5 * 1024 * 1024, chunkSize || 0)   // 不能小于 5MiB（存储硬要求）
+        );
+        const total = Math.max(1, Math.ceil(file.size / partBytes));
+
+        // 1) 建会话（断点续传：同文件同分片大小会复用旧会话）
+        const created = await jsonFetch(api('/api/direct/create'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: file.name, size: file.size, room: room || '',
+                ttl: ttl, chunkBytes: partBytes, total: total
+            })
+        });
+        if (!created || !created.ok || !created.uploadId) {
+            throw new Error((created && created.error) || '后端未返回上传会话');
+        }
+        const uploadId = created.uploadId;
+        writeSessionCache(file.size + '-' + partBytes, uploadId);
+
+        // 2) 逐片：取签名 → 直传 → 回报
+        let sent = 0;
+        for (let i = 1; i <= total; i++) {
+            if (cancelRequested) throw Object.assign(new Error('已取消'), { name: 'AbortError' });
+
+            const p = await jsonFetch(api('/api/direct/part'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uploadId: uploadId, index: i })
+            });
+            if (!p || !p.ok || !p.url) {
+                throw new Error((p && p.error) || ('第 ' + i + ' 片取签名失败'));
+            }
+
+            const blob = file.slice((i - 1) * partBytes, Math.min(i * partBytes, file.size));
+            const putRes = await xhrPutSigned(p.url, p.headers, blob, (frac) => {
+                onProgress(Math.round(((sent + blob.size * frac) / file.size) * 100));
+            });
+            if (!putRes) throw new Error('第 ' + i + ' 片直传失败');
+
+            const reported = await jsonFetch(api('/api/direct/progress'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uploadId: uploadId, index: i, etag: putRes.etag || '' })
+            });
+            if (!reported || !reported.ok) {
+                throw new Error((reported && reported.error) || ('第 ' + i + ' 片回报失败'));
+            }
+
+            sent += blob.size;
+            onProgress(Math.round((sent / file.size) * 100));
+        }
+
+        // 3) 合并
+        const done = await jsonFetch(api('/api/direct/finish'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadId: uploadId, total: total })
+        });
+        if (!done || !done.ok) throw new Error((done && done.error) || '合并失败');
+        clearSessionCache(file.size + '-' + partBytes);
+        if (!done.url) throw new Error('后端未返回下载链接');
+        return done;
+    }
+
+    /**
+     * 用预签名头把字节直接 PUT 到对象存储。
+     * 与 xhrPut 的区别：不是 multipart/form-data，而是把 Blob 当请求体，
+     * 并且必须**原样**带上服务端给的签名头（少一个就 403）。
+     */
+    function xhrPutSigned(url, headers, blob, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            activeXhr = xhr;
+            xhr.open('PUT', url, true);
+            Object.keys(headers || {}).forEach((k) => {
+                try { xhr.setRequestHeader(k, headers[k]); } catch (e) { /* 浏览器禁止的头忽略 */ }
+            });
+            xhr.timeout = UPLOAD_TIMEOUT_MS;
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+            };
+            xhr.onload = () => {
+                activeXhr = null;
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve({ etag: (xhr.getResponseHeader('ETag') || '').replace(/"/g, '') });
+                } else {
+                    // 存储直接返回的错误（403 签名无效 / 400 请求不合法）
+                    reject(new Error('直传被拒：HTTP ' + xhr.status + ' ' + (xhr.responseText || '').slice(0, 160)));
+                }
+            };
+            xhr.onerror = () => { activeXhr = null; reject(new Error('直传网络错误（可能是 CORS 未放行）')); };
+            xhr.ontimeout = () => { activeXhr = null; reject(new Error('直传超时')); };
+            xhr.onabort = () => { activeXhr = null; reject(Object.assign(new Error('已取消'), { name: 'AbortError' })); };
+            xhr.send(blob);
+        });
+    }
+
 
     // ---------- 小工具 ----------
     const $ = (id) => document.getElementById(id);
@@ -1001,6 +1131,12 @@
         const box = $('limitNotice');
         const body = $('limitNoticeBody');
         if (!box || !body) return;
+
+        // 直传模式下字节不经后端，平台请求体上限与文件大小无关——不该再警告。
+        if (SERVER_UPLOAD_MODE === 'direct') {
+            box.classList.add('hidden');
+            return;
+        }
         if (!LIMITED_BACKEND) return;   // 只有受限后端才需要解释
 
         // 以后端上报值为准；没探测到就用按域名推断的保守值
@@ -1035,20 +1171,28 @@
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const info = await res.json().catch(() => ({}));
             badge.className = 'badge online';
-            text.textContent = '后端已连接' + (info.version ? ' · v' + info.version : '');
+            // 上传模式：direct = 浏览器直传对象存储（不受平台请求体限制）
+            if (info.uploadMode === 'direct' || info.uploadMode === 'proxy') {
+                SERVER_UPLOAD_MODE = info.uploadMode;
+            }
+            // 徽章上标出模式，便于一眼看出走的是哪条路
+            text.textContent = '后端已连接' + (info.version ? ' · v' + info.version : '')
+                + (SERVER_UPLOAD_MODE === 'direct' ? ' · 直传' : '');
             // 采用后端上报的单次请求体上限（0 或缺失 = 不限制）。
-            // 这个值决定"直传还是拒绝"，比前端按域名猜测准确。
+            // ⚠ 直传模式下这个值不再限制文件大小（字节不经后端），
+            //   所以不要把 0 当成"不能传"。
             if (typeof info.maxDirectBytes === 'number') {
                 SERVER_MAX_DIRECT = info.maxDirectBytes;
             }
             // 徽章显示**用户实际能传的单文件上限**，而不是存储桶的 MAX_SIZE。
             // 之前显示 info.maxSize（5GB）会让人以为能传 5GB，而受限后端
             // 实际只收 4MB —— 这是明显的误导。
-            const effCap = (SERVER_MAX_DIRECT > 0)
-                ? SERVER_MAX_DIRECT
-                : (info.maxSize || 0);
+            // 直传模式下：字节不经后端，所以上限就是存储桶的 maxSize。
+            const effCap = (SERVER_UPLOAD_MODE === 'direct')
+                ? (info.maxSize || 0)
+                : ((SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : (info.maxSize || 0));
             $('limitText').textContent = effCap ? humanSize(effCap) + ' / 文件' : '未知';
-            if (SERVER_MAX_DIRECT > 0 && info.maxSize && SERVER_MAX_DIRECT < info.maxSize) {
+            if (SERVER_UPLOAD_MODE !== 'direct' && SERVER_MAX_DIRECT > 0 && info.maxSize && SERVER_MAX_DIRECT < info.maxSize) {
                 $('limitText').title = '存储上限 ' + humanSize(info.maxSize)
                     + '，但本后端单请求体上限 ' + humanSize(SERVER_MAX_DIRECT)
                     + '，因此实际可传 ' + humanSize(SERVER_MAX_DIRECT);
@@ -1413,6 +1557,13 @@
         const { file } = item;
         const { ttl, chunkSize, room, onProgress } = opts;
 
+        // 直传模式（B 方案）：后端会上报 uploadMode='direct'。
+        // 这时字节由浏览器直接 PUT 给对象存储，**不受平台请求体上限约束**，
+        // 于是不再有"单文件最多 4MB"的限制。走独立分支，逻辑更清晰。
+        if (SERVER_UPLOAD_MODE === 'direct') {
+            return await uploadOneDirect(item, opts);
+        }
+
         // 直传阈值：后端上报的值优先（更准），没探测到才用按域名推断的保守值。
         const directMax = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
 
@@ -1566,6 +1717,15 @@
         } catch (e) { /* ignore */ }
     }
 
+    /**
+     * 单次请求的超时时间（毫秒）。
+     * 网络被丢包（既不 RST 也不响应）时必须有个兜底，否则按钮会一直停在
+     * "上传中…" 且取消不了，只能刷新页面。
+     * 直传与代理两条路径共用这个值 —— 之前直传分支引用了不存在的常量名，
+     * 导致页面报 "UPLOAD_TIMEOUT_MS is not defined"（浏览器实测抓到）。
+     */
+    const UPLOAD_TIMEOUT_MS = 20 * 60 * 1000;
+
     function xhrPut(url, formData, onProgress) {
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
@@ -1573,7 +1733,7 @@
             xhr.open('POST', url, true);
             // 超时保护：网络被丢包（既不 RST 也不响应）时，以前会永远挂在这里，
             // 按钮一直是"上传中…"且无法取消，只能刷新页面。
-            xhr.timeout = 20 * 60 * 1000;
+            xhr.timeout = UPLOAD_TIMEOUT_MS;
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable && onProgress) {
                     onProgress(Math.round((e.loaded / e.total) * 100));
