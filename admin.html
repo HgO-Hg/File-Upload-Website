@@ -367,6 +367,7 @@ async function deleteFile(id, name) {
     if (!id || busy) return;
     if (!confirm('确定删除这份文件吗？\n\n' + (name || id) + '\n\n删除后下载链接立即失效，且无法恢复。')) return;
     busy = true;
+    let deleted = false;
     setMsg($('panelMsg'), '正在删除…');
     try {
         const res = await fetch(api('/api/admin/delete'), {
@@ -381,12 +382,16 @@ async function deleteFile(id, name) {
             return;
         }
         setMsg($('panelMsg'), '已删除：' + (data.name || id), 'ok');
-        await loadFiles(offset);
+        deleted = true;
     } catch (err) {
         setMsg($('panelMsg'), '删除失败：' + (err && err.message ? err.message : String(err)), 'err');
     } finally {
         busy = false;
     }
+    // ⚠ 刷新必须放在 finally 之后：loadFiles() 开头有 `if (busy) return`，
+    //   之前在这里直接 await loadFiles() 时 busy 还是 true，刷新被静默跳过，
+    //   表现为"删掉了但表格里还在"（浏览器测试抓到的真实 bug）。
+    if (deleted) await loadFiles(offset);
 }
 
 /* ---------- 事件 ---------- */
