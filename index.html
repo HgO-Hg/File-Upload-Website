@@ -609,7 +609,7 @@
                      onerror="this.outerHTML='&lt;div class=\'logo-fallback\'&gt;Hg&lt;/div&gt;'">
             </div>
             <h1>文件中转站</h1>
-            <p><b>无验证 · 拖进来就走 · 换个环境就能拿</b></p>
+            <p><b>无验证 · 拖进来就走 · 换个环境都能拿</b></p>
 
             <div class="status-bar">
                 <span class="badge offline" id="connBadge"><span class="dot"></span><span id="connText">检测服务中…</span></span>
@@ -620,7 +620,7 @@
         <main>
             <!-- 后端未配置提示（文案里的地址由 JS 按当前访问地址动态生成） -->
             <div class="notice hidden" id="cfgNotice">
-                <b>演示模式</b>：还没连上服务，界面可以点、可以拖，但文件不会真的传出去。<br>
+                <b>离线模式</b>：暂未连上服务器，界面可以点击、拖动，但文件不会传出去。<br>
                 <span id="cfgNoticeBody"></span>
             </div>
 
@@ -642,7 +642,7 @@
                     <div class="dropzone" id="dropzone">
                         <span class="dz-icon">📁</span>
                         <div class="dz-main">把文件拖到这里，或点击选择</div>
-                        <div class="dz-sub">支持多选 · 支持大文件分片 · 不需要登录</div>
+                        <div class="dz-sub">支持多选 · 支持大文件分片 </div>
                     </div>
                     <input type="file" id="fileInput" multiple class="hidden">
 
@@ -654,15 +654,10 @@
                                 <option value="86400" selected>1 天</option>
                                 <option value="604800">7 天</option>
                                 <option value="2592000">30 天</option>
-                                <option value="0">永久（不自动删）</option>
+                                <option value="0">永久(不自动删)</option>
                             </select>
                         </label>
                         <label>分片大小
-                            <!-- 选项由 fillChunkOptions() 按后端实际能力动态生成：
-                                 · 直传后端（浏览器直传存储）→ 5~128MiB，下限是存储硬要求
-                                 · 受限后端（Netlify/Vercel 约 4.5MB）→ 只列放得下的档位，
-                                   避免"选了 32MB 实际被夹到 3MB"这种显示与实际不符
-                                 下面这些是 JS 重建前的兜底值，正常会被替换。 -->
                             <select id="chunkSelect" title="分片大小；会根据后端能力自动调整为可用的档位">
                                 <option value="8388608">8 MB</option>
                                 <option value="16777216" selected>16 MB</option>
@@ -712,12 +707,12 @@
                         <button class="btn primary" id="refreshBtn">刷新列表</button>
                     </div>
                     <div class="grid-cards" id="fileGrid"></div>
-                    <div class="notice info" id="gridHint">点上面的「刷新列表」拉取当前可下载的文件。</div>
+                    <div class="notice info" id="gridHint">点击「刷新列表」拉取当前可下载的文件</div>
                 </div>
 
                 <div class="content-section">
                     <h2>按链接直接取</h2>
-                    <p style="font-size:0.95rem;color:#bcd6ff;">粘贴别人给你的下载直链或取件链接：</p>
+                    <p style="font-size:0.95rem;color:#bcd6ff;">粘贴别人给你的下载直链或取件链接</p>
                     <div class="link-box">
                         <input type="text" id="directInput" placeholder="https://…" style="flex:1 1 260px;padding:9px 12px;border-radius:8px;background:rgba(10,25,41,0.9);color:#f0f8ff;border:1px solid rgba(127,191,255,0.35);">
                         <button class="btn" id="directBtn">打开</button>
@@ -731,13 +726,15 @@
                 <h3>三步传文件</h3>
                 <p style="font-size:0.98rem;">① 把文件拖进上面的虚线框（或点“选择文件”）→ ② 点“开始上传”，等进度走完 → ③ 链接会自动复制，把它发到另一台设备打开即可下载。</p>
                 <h3>保存时长</h3>
-                <p style="font-size:0.98rem;">上传前可在“保存时长”里选择 1 小时到 30 天，或选<b>永久</b>。到期后链接自动失效，文件会被清理，请及时下载。</p>
+                <p style="font-size:0.98rem;">上传前可在“保存时长”里选择 1 小时到 30 天，或选<b>永久</b>.到期后链接自动失效，文件会被清理，请及时下载.<b>重要提示:</b>如需长期留存文件请联系站主.如果未经允许上传永久文件会被站主手动清理.</p>
                 <h3>分片大小</h3>
                 <p style="font-size:0.98rem;">大文件会被切成多片分别上传，再自动合并成完整文件，你不需要做任何额外操作。分片越大请求越少、上传越快；分片越小则中断后续传的粒度越细。不确定就用默认值。</p>
                 <h3>分区</h3>
-                <p style="font-size:0.98rem;">上传前可以在“存放分区”里选一个分区（公共区 / 工作 / 学习 / 影音 / 临时）。取件页通过“取件分区”下拉查看对应分区里的文件。<b>分区只是一个分类标签，不是密码</b>——任何打开本站的人都能切换到各分区并看到列表，请勿把分区当作加密或权限手段。</p>
+                <p style="font-size:0.98rem;">上传前可以在“存放分区”里选一个分区（公共区 / 工作 / 学习 / 影音 / 临时）。取件页通过“取件分区”下拉查看对应分区里的文件。<b>分区只是一个分类标签</b>——任何打开本站的人都能切换到各分区并看到列表</p>
                 <h3>安全提醒</h3>
                 <p style="font-size:0.98rem;">本站<b>无需登录、不做验证</b>，这意味着任何拿到网址的人都能上传和下载文件。请勿上传涉密、隐私或重要文件；公开的链接也请只发给你信任的人。</p>
+                <h3>安全性</h3>
+                <p style="font-size:0.98rem;">本网站为实验性项目,无法保证网站的稳定性.无法保证存储文件的安全性.请谨慎下载.
             </section>
         </main>
 
@@ -753,13 +750,7 @@
     <div id="toast-wrap" role="status" aria-live="polite" aria-atomic="false"></div>
 
     <script>
-    /* =====================================================================
-       文件中转站 前端逻辑
-       ---------------------------------------------------------------------
-       ★ 部署前唯一需要改的地方：把 API_BASE 填成你的后端地址
-         （Cloudflare Worker 的 *.workers.dev，或 Netlify / Vercel 的站点域名）。
-         留空 = 演示模式（只走界面，不发请求）。
-       ===================================================================== */
+
     const API_BASE = "https://file-relay.netlify.app";
 
     
@@ -768,21 +759,6 @@
     const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 单文件上限 5GB（后端也应校验）
     const MAX_QUEUE = 200;                        // 队列条数上限，防止一次拖入上千文件把 DOM 拖死
 
-    /**
-     * 有「单请求体上限」的 Serverless 托管平台。
-     *
-     * 为什么需要这张表：
-     *   · Vercel Serverless Functions 请求体上限 4.5MB，超了报
-     *     413 FUNCTION_PAYLOAD_TOO_LARGE（官方文档：
-     *     https://vercel.com/kb/guide/how-to-bypass-vercel-body-size-limit-serverless-functions）
-     *   · Netlify Functions 也有类似的小请求体限制（6MB 左右）
-     *   而这些平台上"小文件直传"（/api/upload）是把整个文件塞进**一个**请求，
-     *   必然撞墙；分片请求的每一片也受同样限制。
-     *
-     * 判据要求**域名结尾锚定**，不能用 base.includes('vercel.app')：
-     *   否则 api.vercel.app.evil.com 这种伪造地址也会命中，
-     *   导致页面在这个后端上白白把分片降到 3MB（功能无谓降级）。
-     */
     const HOSTING_WITH_BODY_LIMIT = /^https?:\/\/([^/]*\.)?(vercel\.app|netlify\.app|netlify\.com)(:\d+)?$/i;
 
     /**
@@ -971,12 +947,6 @@
         return Math.round(sec / 86400) + ' 天';
     }
 
-    /**
-     * 复制文本。
-     * 返回 Promise<boolean>：真的复制成功才 resolve(true)。
-     * 之前是"无论如何都 resolve"，于是复制失败了页面照样弹「链接已复制」，
-     * 用户以为复制好了，粘出来是空的。
-     */
     function copyText(text) {
         if (navigator.clipboard && window.isSecureContext) {
             return navigator.clipboard.writeText(text)
@@ -1014,15 +984,8 @@
         });
     }
 
-    /**
-     * 只允许 http/https 的地址用于跳转与 href。
-     * 后端返回的 url 是远端数据，直接赋给 a.href / window.open 时
-     * 一个 `javascript:` 就能在页面所在源上执行脚本。
-     */
     function safeUrl(u) {
         const raw = String(u == null ? '' : u).trim();
-        // 必须先挡掉空串：`new URL('', base)` 会解析成"当前页面地址"，
-        // 于是缺失的 url 会变成指向自己的链接，而不是被判为非法。
         if (!raw || !/^[a-z][a-z0-9+.-]*:|^\//i.test(raw)) return '';
         try {
             const parsed = new URL(raw, location.href);
@@ -1055,12 +1018,6 @@
         $('helpSection').scrollIntoView({ behavior: 'smooth' });
     });
 
-    // ---------- 后端探测 ----------
-    /**
-     * 演示模式提示。
-     * 以前那句"请打开本文件，把顶部 const API_BASE = "" 改成…" 对只想本地验证的人
-     * 完全无从下手。现在按当前访问地址动态给出"你该打开哪个链接"。
-     */
     function fillDemoHint() {
         const body = $('cfgNoticeBody');
         if (!body) return;
@@ -1076,58 +1033,34 @@
         }
     }
 
-    /**
-     * 按后端实际上限重建「分片大小」下拉选项。
-     *
-     * 为什么必须动态生成：选项原来是硬编码的 8/16/32MB，
-     * 而在 Netlify 这类后端上单请求只能 4.5MB —— 用户看到"已选 16MB"，
-     * 实际却被夹到 3MB，显示与实际不符，会让人以为设置没生效。
-     * 现在直接把不可能的值从下拉里去掉，所见即所得。
-     *
-     * ⚠ 两个容易搞错的地方（线上实测踩过）：
-     *   ① 不能每次调用都无条件重建 + "尽量保留原选择"：页面启动时后端还没探测到
-     *      （此时按域名推断 3MB → 最多给到 2MB），探测到真实 4MB 后再重建时
-     *      prev=2MB 仍在候选里，于是"保留"了 2MB，永远不会升到 3MB。
-     *      所以用 chunkCapApplied 记住上次用的上限，**只有能力变化时才重建**。
-     *   ② 用户手动选过就不要覆盖（chunkPickedByUser），否则是抢用户的选择。
-     */
-    let chunkCapApplied = null;        // 上次重建时用的上限（null = 还没建过）
-    let chunkPickedByUser = false;     // 用户是否手动改过分片大小
+    let chunkCapApplied = null;       
+    let chunkPickedByUser = false;    
 
     function fillChunkOptions() {
         const sel = $('chunkSelect');
         if (!sel) return;
-        // 直传模式下分片由浏览器直接发给存储，平台上限不再相关；
-        // 而存储要求"非末尾分片 ≥5MiB"，所以档位必须从 5MiB 起步。
         const cap = (SERVER_UPLOAD_MODE === 'direct')
             ? DIRECT_PART_MAX
             : ((SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD);
 
-        // 能力没变就不重建：否则会把探测前的临时选择"钉住"（见上面 ①）
         if (chunkCapApplied === cap) return;
 
         let sizes;
         if (SERVER_UPLOAD_MODE === 'direct') {
-            // 直传：下限 5MiB（存储硬要求），上限 128MiB。
-            // 片太小会浪费请求数，片太大则断点续传粒度粗、浏览器内存吃紧。
             const ladder = [
                 5 * 1048576, 8 * 1048576, 16 * 1048576,
                 32 * 1048576, 64 * 1048576, 128 * 1048576
             ];
             sizes = ladder.filter(function (v) { return v <= DIRECT_PART_MAX; });
         } else if (!Number.isFinite(cap)) {
-            // 不受限的代理后端（例如 Cloudflare Worker）：保留常规选项
             sizes = [8388608, 16777216, 33554432];
         } else {
-            // 受限后端：只给放得下的档位，并留出 multipart 编码开销余量（取 3/4）
             const safe = Math.floor(cap * 3 / 4);
             const ladder = [1048576, 2097152, 3145728, 4194304, 8388608, 16777216, 33554432];
             sizes = ladder.filter(function (v) { return v <= safe; });
             if (!sizes.length) {
-                // 上限特别小（例如 1MB）时至少保留一档，避免下拉为空
                 sizes = [safe];
             }
-            // 避免最小档就是"整个上限"，再补一个更保守的档位便于用户选择
             if (sizes.length === 1 && sizes[0] > 262144) {
                 sizes = [Math.floor(sizes[0] / 2), sizes[0]];
             }
@@ -1144,15 +1077,12 @@
             sel.appendChild(o);
         });
 
-        // 用户手动选过 → 尊重其选择；否则取一个**均衡的默认值**（16MiB），
-        // 而不是最大档。原因：分片越大，浏览器发送时占用内存越多（整片先进内存），
-        // 断点续传的粒度也越粗。想要更少请求数的用户可以自己调大。
         let pick = null;
         const desired = chunkPickedByUser
-            ? prev                                              // 用户选的
+            ? prev                                             
             : (sizes.indexOf(DIRECT_PART_BYTES) >= 0
-                ? DIRECT_PART_BYTES                             // 有 16MiB 档就默认它
-                : Math.max.apply(null, sizes));                 // 否则取最大可用档
+                ? DIRECT_PART_BYTES                         
+                : Math.max.apply(null, sizes));                
         for (let i = 0; i < sizes.length; i++) { if (sizes[i] === desired) { pick = sizes[i]; break; } }
         if (pick === null) {
             const ok = sizes.filter(function (v) { return v <= desired; });
@@ -1162,45 +1092,24 @@
         chunkCapApplied = cap;
     }
 
-    /**
-     * 后端单请求体上限提示。
-     *
-     * 受限平台（Vercel 4.5MB / Netlify 约 4.5MB）单次请求收不了大文件，
-     * 而 S3/B2 又要求非末尾分片 ≥5MiB —— 两个限制叠加后，**这类后端上
-     * 可传的最大文件就是那个单请求上限**。用户必须知道这件事，
-     * 否则会看到"上传成功但最后合并失败"这种莫名其妙的错误。
-     */
     function fillLimitHint() {
         const box = $('limitNotice');
         const body = $('limitNoticeBody');
         if (!box || !body) return;
 
-        // 直传模式下字节不经后端，平台请求体上限与文件大小无关——不该再警告。
         if (SERVER_UPLOAD_MODE === 'direct') {
             box.classList.add('hidden');
             return;
         }
-        if (!LIMITED_BACKEND) return;   // 只有受限后端才需要解释
+        if (!LIMITED_BACKEND) return; 
 
-        // 以后端上报值为准；没探测到就用按域名推断的保守值
         const cap = (SERVER_MAX_DIRECT > 0) ? SERVER_MAX_DIRECT : MAX_DIRECT_UPLOAD;
 
-        // 面向用户的说法：不提平台/后端/分片实现，只说"当前最多能传多大"与怎么办
         body.textContent = '当前服务单文件最大 ' + humanSize(cap)
             + '。需要传更大的文件时，请先压缩或拆分后再上传。';
         box.classList.remove('hidden');
     }
 
-    /**
-     * 按后端上报的分区列表填充两个下拉（上传用 roomInput、取件用 roomLookup）。
-     *
-     * 为什么分区由后端决定而不是写死在页面里：
-     *   分区是受控的固定集合（原来的自由输入框让用户可以随便造分区，太散）。
-     *   把名单放在后端，改名单只需改一个环境变量（ROOMS），不用重新打包前端。
-     *   页面里的 <option> 只是探测完成前的兜底值。
-     *
-     * @param {Array<{key:string,label:string}>} rooms
-     */
     function fillPartitions(rooms) {
         if (!Array.isArray(rooms) || !rooms.length) return;
         const valid = rooms.filter(function (r) { return r && r.key; });
@@ -1227,7 +1136,7 @@
         const badge = $('connBadge');
         const text = $('connText');        if (isDemo()) {
             badge.className = 'badge offline';
-            text.textContent = '演示模式（未连接服务）';
+            text.textContent = '离线模式（未连接服务器）';
             $('cfgNotice').classList.remove('hidden');
             $('limitText').textContent = '未连接';
             fillDemoHint();
@@ -1240,16 +1149,11 @@
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const info = await res.json().catch(() => ({}));
             badge.className = 'badge online';
-            // 上传模式：direct = 浏览器直传对象存储（不受平台请求体限制）
             if (info.uploadMode === 'direct' || info.uploadMode === 'proxy') {
                 SERVER_UPLOAD_MODE = info.uploadMode;
             }
-            // 徽章上标出模式，便于一眼看出走的是哪条路
             text.textContent = '服务已连接' + (info.version ? ' · v' + info.version : '')
-                + (SERVER_UPLOAD_MODE === 'direct' ? ' · 直传' : '');
-            // 采用后端上报的单次请求体上限（0 或缺失 = 不限制）。
-            // ⚠ 直传模式下这个值不再限制文件大小（字节不经后端），
-            //   所以不要把 0 当成"不能传"。
+                + (SERVER_UPLOAD_MODE === 'direct' ? '' : '');
             if (typeof info.maxDirectBytes === 'number') {
                 SERVER_MAX_DIRECT = info.maxDirectBytes;
             }
@@ -1266,10 +1170,8 @@
                     + '，但本后端单请求体上限 ' + humanSize(SERVER_MAX_DIRECT)
                     + '，因此实际可传 ' + humanSize(SERVER_MAX_DIRECT);
             }
-            // 选项与提示都要按"已知的上限"重建（探测到之后再算一次）
             fillChunkOptions();
             fillLimitHint();
-            // 分区下拉也以后端名单为准（改名单只需改后端 ROOMS，不用重发前端）
             fillPartitions(info.rooms);
         } catch (err) {
             badge.className = 'badge offline';
@@ -1381,20 +1283,11 @@
         checkChunkPlan(files);
     }
 
-    /**
-     * 队列渲染。
-     * 早先每次进度回调都 `box.innerHTML = ''` 整表重建：
-     *   · 几十个文件并发时严重掉帧（大文件分片回调非常密集）
-     *   · 重建会摧毁焦点，正在 Tab 到「复制链接」按钮会被重置
-     *   · 已完成条目的 DOM 与事件监听每帧重造，浪费且闪烁
-     * 现在按 item.id 缓存行节点，只增量更新变化的文本/宽度，完成后才建动作区。
-     */
     const rowCache = new Map();   // item.id -> { row, status, bar, acts }
 
     function renderQueue() {
         const box = $('queue');
 
-        // 清掉已经不在队列里的行
         const alive = new Set(queue.map(i => i.id));
         for (const [id, entry] of rowCache) {
             if (!alive.has(id)) { entry.row.remove(); rowCache.delete(id); }
@@ -1574,11 +1467,11 @@
                 }
                 if (cancelRequested) { item.status = 'error'; item.error = '已取消'; renderQueue(); break; }
                 item.status = 'done';
-                item.result = { url: '（演示模式）未真正上传：' + item.file.name, key: 'demo', size: item.file.size };
+                item.result = { url: '（离线模式）未真正上传：' + item.file.name, key: 'demo', size: item.file.size };
                 renderQueue();
             }
             setLocked(false);
-            toast(cancelRequested ? '已取消' : '演示模式跑完了，配置 API_BASE 后才是真上传');
+            toast(cancelRequested ? '已取消' : '离线模式跑完了，配置 API_BASE 后才是真上传');
             return;
         }
 
@@ -1847,7 +1740,7 @@
         const hint = $('gridHint');
         if (isDemo()) {
             hint.className = 'notice';
-            hint.textContent = '演示模式：还没连接服务，无法拉取列表。';
+            hint.textContent = '离线模式：还没连接服务器，无法拉取列表。';
             return;
         }
         const room = $('roomLookup').value.trim();
@@ -1862,7 +1755,7 @@
                 return;
             }
             hint.className = 'notice info';
-            hint.textContent = '共 ' + files.length + ' 个文件，过期时间见各卡片。';
+            hint.textContent = '共 ' + files.length + ' 个文件，过期时间详见各卡片。';
             files.forEach(f => {
                 const card = document.createElement('div');
                 card.className = 'link-card';
@@ -1948,7 +1841,7 @@
     window.addEventListener('load', () => setTimeout(hideLoader, 600));
     setTimeout(hideLoader, 3000); // 兜底
 
-    // ---------- 原站保留的小彩蛋 ----------
+    // ---------- 原站保留的小彩蛋 ----------Hg注:我也不知道这个是哪一代的产物
     function white() {
         document.body.style.transition = 'background 0.6s';
         document.body.style.background = 'linear-gradient(135deg,#ffffff 0%,#dbe9ff 100%)';
@@ -1971,7 +1864,7 @@
     window.addEventListener('beforeunload', (e) => {
         if (!uploading) return;
         e.preventDefault();
-        e.returnValue = '还有文件正在上传，确定离开吗？';
+        e.returnValue = '还有文件正在上传，确定离开吗?';
         return e.returnValue;
     });
 
