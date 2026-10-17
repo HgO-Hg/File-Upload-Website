@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>站主管理 · 文件中转站</title>
+    <style>
+        :root {
+            --blue: #0267f4;
+            --pink: #ff69b4;
+            --dark: #1a1a2e;
+            --panel: rgba(10, 25, 41, 0.86);
+            --line: rgba(127, 191, 255, 0.28);
+            --text: #eaf4ff;
+            --muted: #9db8d6;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+            color: var(--text);
+            background: linear-gradient(135deg, var(--dark) 0%, #0a1929 100%);
+            padding: 22px 16px 40px;
+        }
+        .wrap { max-width: 1180px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: 1px; }
+        h1 span { color: var(--pink); }
+        .sub { color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 18px;
+            margin-bottom: 16px;
+        }
+        .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        input[type=password], input[type=text], select {
+            padding: 9px 12px;
+            border-radius: 9px;
+            border: 1px solid var(--line);
+            background: rgba(6, 18, 32, 0.95);
+            color: var(--text);
+            font-size: .95rem;
+            outline: none;
+        }
+        input:focus, select:focus { border-color: var(--blue); }
+        button {
+            padding: 9px 16px;
+            border-radius: 9px;
+            border: 1px solid var(--line);
+            background: rgba(2, 103, 244, 0.16);
+            color: var(--text);
+            font-size: .95rem;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) { border-color: var(--blue); background: rgba(2, 103, 244, 0.3); }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        button.primary { background: linear-gradient(135deg, var(--blue), #0a86ff); border-color: transparent; font-weight: 600; }
+        button.danger { background: rgba(255, 80, 110, 0.18); border-color: rgba(255, 80, 110, .5); }
+        button.danger:hover:not(:disabled) { background: rgba(255, 80, 110, 0.32); }
+        .hidden { display: none !important; }
+        .msg { margin-top: 10px; font-size: .9rem; min-height: 1.2em; }
+        .msg.err { color: #ff8fa3; }
+        .msg.ok { color: #7ee2a8; }
+
+        table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+        th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid rgba(127, 191, 255, 0.14); vertical-align: middle; }
+        th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+        tbody tr:hover { background: rgba(2, 103, 244, 0.08); }
+        td.name { max-width: 320px; word-break: break-all; }
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: .78rem;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .tag.expired { border-color: rgba(255, 80, 110, .55); color: #ff8fa3; }
+        .mono { font-variant-numeric: tabular-nums; }
+        .muted { color: var(--muted); }
+        .toolbar-gap { flex: 1 1 auto; }
+        .empty { padding: 28px 8px; text-align: center; color: var(--muted); }
+        a.dl { color: #9ee7ff; text-decoration: none; }
+        a.dl:hover { text-decoration: underline; }
+        .foot { color: var(--muted); font-size: .8rem; text-align: center; margin-top: 24px; }
+        @media (max-width: 760px) {
+            th.hide-sm, td.hide-sm { display: none; }
+            td.name { max-width: 160px; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>站主管理 <span>✦</span></h1>
+    <div class="sub">仅站主可用：查看、下载、删除所有分区里的文件。</div>
+
+    <!-- ============ 登录 ============ -->
+    <div class="card" id="loginCard">
+        <div class="row">
+            <input type="password" id="pwd" placeholder="请输入站主密码" autocomplete="current-password" style="flex:1 1 260px">
+            <button class="primary" id="loginBtn">登录</button>
+        </div>
+        <div class="msg" id="loginMsg"></div>
+    </div>
+
+    <!-- ============ 管理台 ============ -->
+    <div class="card hidden" id="panel">
+        <div class="row" style="margin-bottom:14px">
+            <label class="muted">分区
+                <select id="roomSel" style="margin-left:6px">
+                    <option value="all" selected>全部</option>
+                </select>
+            </label>
+            <input type="text" id="kw" placeholder="按文件名搜索" style="flex:1 1 180px">
+            <button id="refreshBtn">刷新</button>
+            <span class="toolbar-gap"></span>
+            <span class="muted" id="stat"></span>
+            <button id="logoutBtn" class="danger">退出</button>
+        </div>
+
+        <div id="tableBox"></div>
+
+        <div class="row" style="margin-top:14px">
+            <button id="prevBtn">← 上一页</button>
+            <button id="nextBtn">下一页 →</button>
+            <span class="toolbar-gap"></span>
+            <span class="muted" id="pageInfo"></span>
+        </div>
+        <div class="msg" id="panelMsg"></div>
+    </div>
+
+    <div class="foot">文件中转站 · 站主控制台</div>
+</div>
+
+<script>
+/* =====================================================================
+   站主管理页
+   ---------------------------------------------------------------------
+   ⚠ 安全要点（改这个文件时务必遵守）：
+     1. 页面里**绝不**出现站主密码。密码只在登录时 POST 给 /api/admin/login，
+        由服务端比对；服务端返回一个短期 HMAC 令牌。
+     2. 令牌存 sessionStorage（关掉标签页即失效），不放 localStorage。
+     3. 文件名来自用户上传，渲染时必须转义，否则可被注入 HTML/脚本。
+     4. 下载链接只允许 http/https。
+   ===================================================================== */
+
+/* 部署前由 prepare-deploy.js 填入后端地址（与主页面同一套机制）。
+   留空 = 同源（管理页与接口同站点时可直接用）。 */
+const API_BASE = "https://hg-file-relay.YOUR-SUBDOMAIN.workers.dev";
+
+// 本地联调：只允许 localhost，避免把令牌发到任意远端。
+// （保留它是安全的：即便在生产页面上传 ?api=，也只会指向使用者自己的本机。）
+(function () {
+    try {
+        const q = new URLSearchParams(location.search).get('api');
+        if (q && /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])(:\d{1,5})?(\/|$)/i.test(q)) {
+            window.__API_OVERRIDE__ = new URL(q).origin;
+        }
+    } catch (e) { /* ignore */ }
+})();
+const EFFECTIVE_API = (window.__API_OVERRIDE__ || API_BASE || '');
+const api = (p) => EFFECTIVE_API + p;
+
+const TOKEN_KEY = 'relay-admin-token';
+const PAGE_SIZE = 100;
+
+let token = '';
+let offset = 0;
+let lastTotal = 0;
+let lastFiles = [];
+let busy = false;
+
+const $ = (id) => document.getElementById(id);
+
+/** HTML 转义：文件名等用户数据一律走这里 */
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** 只接受 http/https 的链接；其余返回空串 */
+function safeUrl(u) {
+    const raw = String(u || '').trim();
+    if (!raw || !/^https?:\/\//i.test(raw)) return '';
+    return raw;
+}
+
+function humanSize(n) {
+    const v = Number(n) || 0;
+    if (v < 1024) return v + ' B';
+    const u = ['KB', 'MB', 'GB', 'TB'];
+    let x = v, i = -1;
+    do { x /= 1024; i++; } while (x >= 1024 && i < u.length - 1);
+    return x.toFixed(1) + ' ' + u[i];
+}
+
+function fmtTime(ms) {
+    if (!ms) return '—';
+    const d = new Date(Number(ms));
+    if (isNaN(d.getTime())) return '—';
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function remainText(sec) {
+    const s = Number(sec) || 0;
+    if (s <= 0) return '已过期';
+    if (s < 60) return s + ' 秒';
+    if (s < 3600) return Math.floor(s / 60) + ' 分钟';
+    if (s < 86400) return Math.floor(s / 3600) + ' 小时';
+    return Math.floor(s / 86400) + ' 天';
+}
+
+function setMsg(el, text, cls) {
+    el.textContent = text || '';
+    el.className = 'msg' + (cls ? ' ' + cls : '');
+}
+
+/* ---------- 登录 ---------- */
+async function login() {
+    const pwd = $('pwd').value;
+    if (!pwd) { setMsg($('loginMsg'), '请输入密码', 'err'); return; }
+    $('loginBtn').disabled = true;
+    setMsg($('loginMsg'), '验证中…');
+    try {
+        const res = await fetch(api('/api/admin/login'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pwd })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok || !data.token) {
+            setMsg($('loginMsg'), data.error || ('登录失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        token = data.token;
+        try { sessionStorage.setItem(TOKEN_KEY, token); } catch (e) { /* 隐私模式可能禁用存储 */ }
+        $('pwd').value = '';
+        setMsg($('loginMsg'), '');
+        enterPanel(data.rooms);
+        await loadFiles(0);
+    } catch (err) {
+        setMsg($('loginMsg'), '无法连接服务：' + (err && err.message ? err.message : String(err)), 'err');
+    } finally {
+        $('loginBtn').disabled = false;
+    }
+}
+
+function enterPanel(rooms) {
+    $('loginCard').classList.add('hidden');
+    $('panel').classList.remove('hidden');
+    const sel = $('roomSel');
+    const cur = sel.value;
+    if (Array.isArray(rooms) && rooms.length) {
+        sel.textContent = '';
+        const all = document.createElement('option');
+        all.value = 'all';
+        all.textContent = '全部';
+        sel.appendChild(all);
+        rooms.forEach(function (r) {
+            const o = document.createElement('option');
+            o.value = String(r.key);
+            o.textContent = String(r.label || r.key);
+            sel.appendChild(o);
+        });
+        sel.value = rooms.some(r => String(r.key) === cur) ? cur : 'all';
+    }
+}
+
+function logout() {
+    token = '';
+    try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { }
+    $('panel').classList.add('hidden');
+    $('loginCard').classList.remove('hidden');
+    setMsg($('loginMsg'), '已退出', 'ok');
+}
+
+/* ---------- 拉取列表 ---------- */
+async function loadFiles(newOffset) {
+    if (!token || busy) return;
+    busy = true;
+    $('refreshBtn').disabled = true;
+    setMsg($('panelMsg'), '加载中…');
+    try {
+        const room = $('roomSel').value || 'all';
+        const url = api('/api/admin/files?room=' + encodeURIComponent(room)
+            + '&limit=' + PAGE_SIZE + '&offset=' + (newOffset || 0));
+        const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+
+        if (res.status === 401) {
+            setMsg($('panelMsg'), '登录已失效，请重新登录', 'err');
+            logout();
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('panelMsg'), data.error || ('加载失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        offset = Number(data.offset) || 0;
+        lastTotal = Number(data.total) || 0;
+        lastFiles = Array.isArray(data.files) ? data.files : [];
+        if (Array.isArray(data.rooms)) enterPanel(data.rooms);
+        render();
+        setMsg($('panelMsg'), '');
+    } catch (err) {
+        setMsg($('panelMsg'), '无法连接服务：' + (err && err.message ? err.message : String(err)), 'err');
+    } finally {
+        busy = false;
+        $('refreshBtn').disabled = false;
+    }
+}
+
+/* ---------- 渲染 ---------- */
+function render() {
+    const kw = $('kw').value.trim().toLowerCase();
+    const rows = kw ? lastFiles.filter(f => String(f.name || '').toLowerCase().includes(kw)) : lastFiles;
+    const bytes = rows.reduce((s, f) => s + (Number(f.size) || 0), 0);
+    $('stat').textContent = '共 ' + lastTotal + ' 个文件 · 本页 ' + rows.length + ' 个（' + humanSize(bytes) + '）';
+
+    const box = $('tableBox');
+    if (!rows.length) {
+        box.innerHTML = '<div class="empty">' + (kw ? '没有匹配的文件' : '这个分区还没有文件') + '</div>';
+    } else {
+        const trs = rows.map(function (f) {
+            const url = safeUrl(f.url);
+            const expired = Boolean(f.expired);
+            return '<tr>'
+                + '<td><span class="tag">' + esc(f.room || '—') + '</span></td>'
+                + '<td class="name">' + esc(f.name || '(未命名)') + '</td>'
+                + '<td class="mono">' + humanSize(f.size) + '</td>'
+                + '<td class="mono hide-sm">' + esc(fmtTime(f.uploadedAt)) + '</td>'
+                + '<td><span class="tag' + (expired ? ' expired' : '') + '">'
+                + (expired ? '已过期' : esc(remainText(f.expiresIn))) + '</span></td>'
+                + '<td style="white-space:nowrap">'
+                + (url ? '<a class="dl" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">下载</a>' : '<span class="muted">—</span>')
+                + ' <button class="danger" data-del="' + esc(f.id) + '" data-name="' + esc(f.name || '') + '" style="padding:4px 10px;font-size:.82rem">删除</button>'
+                + '</td>'
+                + '</tr>';
+        });
+        box.innerHTML = '<table><thead><tr>'
+            + '<th>分区</th><th>文件名</th><th>大小</th><th class="hide-sm">上传时间</th><th>剩余</th><th>操作</th>'
+            + '</tr></thead><tbody>' + trs.join('') + '</tbody></table>';
+
+        // 事件用委托绑定，避免文件名里的特殊字符破坏内联事件
+        box.querySelectorAll('button[data-del]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                deleteFile(btn.getAttribute('data-del'), btn.getAttribute('data-name'));
+            });
+        });
+    }
+
+    const pageNo = Math.floor(offset / PAGE_SIZE) + 1;
+    const pages = Math.max(1, Math.ceil(lastTotal / PAGE_SIZE));
+    $('pageInfo').textContent = '第 ' + pageNo + ' / ' + pages + ' 页';
+    $('prevBtn').disabled = offset <= 0;
+    $('nextBtn').disabled = offset + PAGE_SIZE >= lastTotal;
+}
+
+/* ---------- 删除 ---------- */
+async function deleteFile(id, name) {
+    if (!id || busy) return;
+    if (!confirm('确定删除这份文件吗？\n\n' + (name || id) + '\n\n删除后下载链接立即失效，且无法恢复。')) return;
+    busy = true;
+    setMsg($('panelMsg'), '正在删除…');
+    try {
+        const res = await fetch(api('/api/admin/delete'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ id: id })
+        });
+        if (res.status === 401) { setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('panelMsg'), data.error || ('删除失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        setMsg($('panelMsg'), '已删除：' + (data.name || id), 'ok');
+        await loadFiles(offset);
+    } catch (err) {
+        setMsg($('panelMsg'), '删除失败：' + (err && err.message ? err.message : String(err)), 'err');
+    } finally {
+        busy = false;
+    }
+}
+
+/* ---------- 事件 ---------- */
+$('loginBtn').addEventListener('click', login);
+$('pwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
+$('refreshBtn').addEventListener('click', function () { loadFiles(offset); });
+$('logoutBtn').addEventListener('click', logout);
+$('roomSel').addEventListener('change', function () { loadFiles(0); });
+$('kw').addEventListener('input', function () { render(); });
+$('prevBtn').addEventListener('click', function () { loadFiles(Math.max(0, offset - PAGE_SIZE)); });
+$('nextBtn').addEventListener('click', function () { loadFiles(offset + PAGE_SIZE); });
+
+/* 启动：如果本标签页里已有令牌（刷新页面），直接进入 */
+(function boot() {
+    try {
+        const saved = sessionStorage.getItem(TOKEN_KEY);
+        if (saved) {
+            token = saved;
+            // 先验证令牌是否仍有效：拉一页数据，401 会自动退回登录
+            enterPanel(null);
+            loadFiles(0);
+        }
+    } catch (e) { /* 忽略 */ }
+})();
+</script>
+</body>
+</html>
