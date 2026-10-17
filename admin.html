@@ -150,7 +150,7 @@
 
 /* 部署前由 prepare-deploy.js 填入后端地址（与主页面同一套机制）。
    留空 = 同源（管理页与接口同站点时可直接用）。 */
-const API_BASE = "https://hg-file-relay.YOUR-SUBDOMAIN.workers.dev";
+const API_BASE = "https://file-relay.netlify.app";
 
 // 本地联调：只允许 localhost，避免把令牌发到任意远端。
 // （保留它是安全的：即便在生产页面上传 ?api=，也只会指向使用者自己的本机。）
