@@ -669,8 +669,16 @@
                             </select>
                         </label>
                         <label><input type="checkbox" id="autoCopy" checked> 完成后自动复制链接</label>
-                        <label>取件码
-                            <input type="text" id="roomInput" maxlength="24" placeholder="留空=公共区">
+                        <label>存放分区
+                            <!-- 选项由 refreshPartitions() 按后端上报的分区列表生成；
+                                 下面这些是探测完成前的兜底值（应与后端默认一致）。 -->
+                            <select id="roomInput" title="选择一个分区存放文件">
+                                <option value="public" selected>公共区</option>
+                                <option value="work">工作</option>
+                                <option value="study">学习</option>
+                                <option value="media">影音</option>
+                                <option value="temp">临时</option>
+                            </select>
                         </label>
                     </div>
 
@@ -690,8 +698,15 @@
                 <div class="content-section">
                     <h2>取件</h2>
                     <div class="btn-row">
-                        <label>取件码
-                            <input type="text" id="roomLookup" maxlength="24" placeholder="留空=公共区">
+                        <label>取件分区
+                            <!-- 与上传面板共用同一份分区列表（refreshPartitions 填充） -->
+                            <select id="roomLookup" title="选择要查看的分区">
+                                <option value="public" selected>公共区</option>
+                                <option value="work">工作</option>
+                                <option value="study">学习</option>
+                                <option value="media">影音</option>
+                                <option value="temp">临时</option>
+                            </select>
                         </label>
                         <button class="btn primary" id="refreshBtn">刷新列表</button>
                     </div>
@@ -718,8 +733,8 @@
                 <p style="font-size:0.98rem;">上传前可在“保存时长”里选择 1 小时到 30 天，或选<b>永久</b>。到期后链接自动失效，文件会被清理，请及时下载。</p>
                 <h3>分片大小</h3>
                 <p style="font-size:0.98rem;">大文件会被切成多片分别上传，再自动合并成完整文件，你不需要做任何额外操作。分片越大请求越少、上传越快；分片越小则中断后续传的粒度越细。不确定就用默认值。</p>
-                <h3>取件码</h3>
-                <p style="font-size:0.98rem;">取件码只是给文件打个<b>分区标签</b>，方便把同一批文件归到一起，<b>它不是一个密码</b>——知道取件码的人都能看到该分区的文件列表。请勿把它当作加密或权限手段。</p>
+                <h3>分区</h3>
+                <p style="font-size:0.98rem;">上传前可以在“存放分区”里选一个分区（公共区 / 工作 / 学习 / 影音 / 临时）。取件页通过“取件分区”下拉查看对应分区里的文件。<b>分区只是一个分类标签，不是密码</b>——任何打开本站的人都能切换到各分区并看到列表，请勿把分区当作加密或权限手段。</p>
                 <h3>安全提醒</h3>
                 <p style="font-size:0.98rem;">本站<b>无需登录、不做验证</b>，这意味着任何拿到网址的人都能上传和下载文件。请勿上传涉密、隐私或重要文件；公开的链接也请只发给你信任的人。</p>
             </section>
@@ -1175,6 +1190,38 @@
         box.classList.remove('hidden');
     }
 
+    /**
+     * 按后端上报的分区列表填充两个下拉（上传用 roomInput、取件用 roomLookup）。
+     *
+     * 为什么分区由后端决定而不是写死在页面里：
+     *   分区是受控的固定集合（原来的自由输入框让用户可以随便造分区，太散）。
+     *   把名单放在后端，改名单只需改一个环境变量（ROOMS），不用重新打包前端。
+     *   页面里的 <option> 只是探测完成前的兜底值。
+     *
+     * @param {Array<{key:string,label:string}>} rooms
+     */
+    function fillPartitions(rooms) {
+        if (!Array.isArray(rooms) || !rooms.length) return;
+        const valid = rooms.filter(function (r) { return r && r.key; });
+        if (!valid.length) return;
+
+        ['roomInput', 'roomLookup'].forEach(function (id) {
+            const sel = $(id);
+            if (!sel) return;
+            const prev = sel.value;
+            sel.textContent = '';
+            valid.forEach(function (r) {
+                const o = document.createElement('option');
+                o.value = String(r.key);
+                o.textContent = String(r.label || r.key);
+                sel.appendChild(o);
+            });
+            // 尽量保留原选择；不在新名单里就回落到第一个
+            const has = valid.some(function (r) { return String(r.key) === prev; });
+            sel.value = has ? prev : String(valid[0].key);
+        });
+    }
+
     async function probeBackend() {
         const badge = $('connBadge');
         const text = $('connText');        if (isDemo()) {
@@ -1221,6 +1268,8 @@
             // 选项与提示都要按"已知的上限"重建（探测到之后再算一次）
             fillChunkOptions();
             fillLimitHint();
+            // 分区下拉也以后端名单为准（改名单只需改后端 ROOMS，不用重发前端）
+            fillPartitions(info.rooms);
         } catch (err) {
             badge.className = 'badge offline';
             text.textContent = '服务不可达（' + err.message + '）';
