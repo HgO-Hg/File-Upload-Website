@@ -284,6 +284,26 @@ function setMsg(el, text, cls) {
     el.className = 'msg' + (cls ? ' ' + cls : '');
 }
 
+/**
+ * 带重试的请求：只重试"网络层失败"和 5xx。
+ * 4xx 是服务端明确回应（密码错、未登录等），重试没有意义还会拖慢反馈。
+ */
+async function fetchRetry(url, opts, attempts) {
+    const n = attempts || 3;
+    let lastErr = null;
+    for (let i = 1; i <= n; i++) {
+        try {
+            const res = await fetch(url, opts);
+            if (res.ok || res.status < 500) return res;
+            lastErr = new Error('HTTP ' + res.status);
+        } catch (e) {
+            lastErr = e;
+        }
+        if (i < n) await new Promise(r => setTimeout(r, i === 1 ? 600 : 1500));
+    }
+    throw lastErr || new Error('无法连接服务');
+}
+
 /* ---------- 登录 ---------- */
 async function login() {
     const pwd = $('pwd').value;
@@ -291,7 +311,7 @@ async function login() {
     $('loginBtn').disabled = true;
     setMsg($('loginMsg'), '验证中…');
     try {
-        const res = await fetch(api('/api/admin/login'), {
+        const res = await fetchRetry(api('/api/admin/login'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: pwd })
@@ -353,7 +373,7 @@ async function loadFiles(newOffset) {
         const room = $('roomSel').value || 'all';
         const url = api('/api/admin/files?room=' + encodeURIComponent(room)
             + '&limit=' + PAGE_SIZE + '&offset=' + (newOffset || 0));
-        const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+        const res = await fetchRetry(url, { headers: { Authorization: 'Bearer ' + token } });
 
         if (res.status === 401) {
             setMsg($('panelMsg'), '登录已失效，请重新登录', 'err');
