@@ -1225,6 +1225,8 @@
         });
     }
 
+    let probeRetryTimer = null;
+
     async function probeBackend() {
         const badge = $('connBadge');
         const text = $('connText');        if (isDemo()) {
@@ -1238,7 +1240,10 @@
         badge.className = 'badge';
         text.textContent = '检测服务中…';
         try {
-            const res = await fetch(api('/api/health'), { method: 'GET' });
+            // 带重试的探测：网络抖动、浏览器 DNS 负缓存、平台偶发 5xx，
+            // 只要一次失败就直接显示"服务不可达"，用户会以为整站挂了。
+            // 这里最多试 3 次（间隔 600ms / 1500ms），仍失败才判定不可达。
+            const res = await fetchHealthWithRetry(3);
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const info = await res.json().catch(() => ({}));
             badge.className = 'badge online';
@@ -1274,9 +1279,37 @@
             fillPartitions(info.rooms);
         } catch (err) {
             badge.className = 'badge offline';
-            text.textContent = '服务不可达（' + err.message + '）';
+            text.textContent = '服务不可达（' + err.message + '）· 稍后自动重试';
             $('limitText').textContent = '未知';
+            // 自动恢复：网络抖动或 DNS 负缓存通常几秒就过去，
+            // 10 秒后再探一次，成功后界面自动转回正常，用户不用刷新。
+            if (!probeRetryTimer) {
+                probeRetryTimer = setTimeout(function () {
+                    probeRetryTimer = null;
+                    if (!document.hidden) probeBackend();
+                }, 10000);
+            }
         }
+    }
+
+    /**
+     * 带重试的 health 探测。
+     * 只重试"网络层失败"和 5xx；4xx 是服务端明确回应（例如路径不存在），
+     * 重试只会掩盖真问题，所以直接返回。
+     */
+    async function fetchHealthWithRetry(attempts) {
+        let lastErr = null;
+        for (let i = 1; i <= attempts; i++) {
+            try {
+                const res = await fetch(api('/api/health'), { method: 'GET' });
+                if (res.ok || res.status < 500) return res;
+                lastErr = new Error('HTTP ' + res.status);
+            } catch (e) {
+                lastErr = e;
+            }
+            if (i < attempts) await new Promise(r => setTimeout(r, i === 1 ? 600 : 1500));
+        }
+        throw lastErr || new Error('无法连接服务');
     }
 
     // ---------- 文件队列 ----------
