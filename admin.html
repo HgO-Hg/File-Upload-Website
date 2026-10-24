@@ -498,6 +498,7 @@ async function deleteSelected() {
     const ids = Array.from(selected);
     if (!confirm('确定删除选中的 ' + ids.length + ' 个文件吗？\n\n删除后下载链接立即失效，且无法恢复。')) return;
     busy = true;
+    let keepMsg = '', keepMsgCls = 'ok';
     setMsg($('panelMsg'), '正在删除 ' + ids.length + ' 个文件…');
     let done = false;
     try {
@@ -513,9 +514,9 @@ async function deleteSelected() {
             return;
         }
         selected.clear();
-        setMsg($('panelMsg'),
-            '已删除 ' + data.deletedCount + ' 个' + (data.failedCount ? '，失败 ' + data.failedCount + ' 个' : ''),
-            data.failedCount ? 'err' : 'ok');
+        keepMsg = '已删除 ' + data.deletedCount + ' 个' + (data.failedCount ? '，失败 ' + data.failedCount + ' 个' : '');
+        keepMsgCls = data.failedCount ? 'err' : 'ok';
+        setMsg($('panelMsg'), keepMsg, keepMsgCls);
         done = true;
     } catch (err) {
         setMsg($('panelMsg'), '批量删除失败：' + (err && err.message ? err.message : String(err)), 'err');
@@ -523,6 +524,8 @@ async function deleteSelected() {
         busy = false;
     }
     if (done) await loadFiles(offset);
+    // 刷新列表会清空提示，所以刷新后把结果再写回去，否则用户看不到"清理了多少"
+    if (done && keepMsg) setMsg($('panelMsg'), keepMsg, keepMsgCls);
 }
 
 /* ---------- 一键清理过期 ---------- */
@@ -530,6 +533,7 @@ async function purgeExpired() {
     if (busy) return;
     if (!confirm('清理所有分区里已过期的文件？\n\n永久保存的文件不会被删除，此操作不可撤销。')) return;
     busy = true;
+    let keepMsg = '', keepMsgCls = 'ok';
     setMsg($('panelMsg'), '正在扫描过期文件…');
     let done = false;
     try {
@@ -544,9 +548,11 @@ async function purgeExpired() {
             setMsg($('panelMsg'), data.error || ('清理失败（HTTP ' + res.status + '）'), 'err');
             return;
         }
-        setMsg($('panelMsg'), data.deletedCount
+        keepMsg = data.deletedCount
             ? ('已清理 ' + data.deletedCount + ' 个过期文件，释放 ' + humanSize(data.freedBytes))
-            : ('没有过期文件（共扫描 ' + data.scanned + ' 个）'), 'ok');
+            : ('没有过期文件（共扫描 ' + data.scanned + ' 个）');
+        keepMsgCls = 'ok';
+        setMsg($('panelMsg'), keepMsg, keepMsgCls);
         done = true;
     } catch (err) {
         setMsg($('panelMsg'), '清理失败：' + (err && err.message ? err.message : String(err)), 'err');
@@ -554,6 +560,7 @@ async function purgeExpired() {
         busy = false;
     }
     if (done) await loadFiles(offset);
+    if (done && keepMsg) setMsg($('panelMsg'), keepMsg, keepMsgCls);
 }
 
 /* ---------- 事件 ---------- */
