@@ -493,6 +493,27 @@ async function deleteFile(id, name) {
 }
 
 /* ---------- 批量删除 ---------- */
+/**
+ * 逐个删除（兼容模式）。
+ * 当后端还没有 /api/admin/delete-batch 时（例如函数尚未重新部署）自动退回这条路径，
+ * 这样界面不会因为"服务端版本旧"而整块失效。
+ */
+async function deleteSelectedFallback(ids) {
+    let ok = 0, bad = 0;
+    for (let i = 0; i < ids.length; i++) {
+        setMsg($('panelMsg'), '正在删除 ' + (i + 1) + ' / ' + ids.length + '…');
+        try {
+            const r = await fetch(api('/api/admin/delete'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({ id: ids[i] })
+            });
+            if (r.ok) ok++; else bad++;
+        } catch (e) { bad++; }
+    }
+    return { ok: true, deletedCount: ok, failedCount: bad, compat: true };
+}
+
 async function deleteSelected() {
     if (!selected.size || busy) return;
     const ids = Array.from(selected);
@@ -502,19 +523,26 @@ async function deleteSelected() {
     setMsg($('panelMsg'), '正在删除 ' + ids.length + ' 个文件…');
     let done = false;
     try {
+        let data = null;
         const res = await fetch(api('/api/admin/delete-batch'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
             body: JSON.stringify({ ids: ids })
         });
-        if (res.status === 401) { setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return; }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) {
-            setMsg($('panelMsg'), data.error || ('批量删除失败（HTTP ' + res.status + '）'), 'err');
-            return;
+        if (res.status === 404 || res.status === 405) {
+            data = await deleteSelectedFallback(ids);      // 后端版本较旧 → 逐个删
+        } else if (res.status === 401) {
+            setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return;
+        } else {
+            data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                setMsg($('panelMsg'), data.error || ('批量删除失败（HTTP ' + res.status + '）'), 'err');
+                return;
+            }
         }
         selected.clear();
-        keepMsg = '已删除 ' + data.deletedCount + ' 个' + (data.failedCount ? '，失败 ' + data.failedCount + ' 个' : '');
+        keepMsg = '已删除 ' + data.deletedCount + ' 个' + (data.failedCount ? '，失败 ' + data.failedCount + ' 个' : '')
+            + (data.compat ? '（兼容模式）' : '');
         keepMsgCls = data.failedCount ? 'err' : 'ok';
         setMsg($('panelMsg'), keepMsg, keepMsgCls);
         done = true;
@@ -529,6 +557,39 @@ async function deleteSelected() {
 }
 
 /* ---------- 一键清理过期 ---------- */
+/**
+ * 兼容模式：后端没有 /api/admin/purge-expired 时，由前端扫描全部分页并逐个删除。
+ * 判据只用服务端返回的 expired 字段，**绝不**在客户端猜过期时间。
+ */
+async function purgeExpiredFallback() {
+    let all = [], offset = 0;
+    for (let guard = 0; guard < 50; guard++) {
+        const res = await fetch(api('/api/admin/files?room=all&limit=1000&offset=' + offset),
+            { headers: { Authorization: 'Bearer ' + token } });
+        if (res.status === 401) { logout(); throw new Error('登录已失效'); }
+        if (!res.ok) throw new Error('读取列表失败（HTTP ' + res.status + '）');
+        const data = await res.json();
+        const files = Array.isArray(data.files) ? data.files : [];
+        all = all.concat(files);
+        if (!data.truncated || !files.length) break;
+        offset += files.length;
+    }
+    const expired = all.filter(f => f.expired);
+    let ok = 0, freed = 0, bad = 0;
+    for (let i = 0; i < expired.length; i++) {
+        setMsg($('panelMsg'), '正在清理 ' + (i + 1) + ' / ' + expired.length + '…');
+        try {
+            const r = await fetch(api('/api/admin/delete'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({ id: expired[i].id })
+            });
+            if (r.ok) { ok++; freed += Number(expired[i].size) || 0; } else bad++;
+        } catch (e) { bad++; }
+    }
+    return { ok: true, scanned: all.length, deletedCount: ok, freedBytes: freed, failedCount: bad, compat: true };
+}
+
 async function purgeExpired() {
     if (busy) return;
     if (!confirm('清理所有分区里已过期的文件？\n\n永久保存的文件不会被删除，此操作不可撤销。')) return;
@@ -537,21 +598,27 @@ async function purgeExpired() {
     setMsg($('panelMsg'), '正在扫描过期文件…');
     let done = false;
     try {
+        let data = null;
         const res = await fetch(api('/api/admin/purge-expired'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
             body: JSON.stringify({})
         });
-        if (res.status === 401) { setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return; }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) {
-            setMsg($('panelMsg'), data.error || ('清理失败（HTTP ' + res.status + '）'), 'err');
-            return;
+        if (res.status === 404 || res.status === 405) {
+            data = await purgeExpiredFallback();           // 后端版本较旧 → 前端扫描
+        } else if (res.status === 401) {
+            setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return;
+        } else {
+            data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                setMsg($('panelMsg'), data.error || ('清理失败（HTTP ' + res.status + '）'), 'err');
+                return;
+            }
         }
         keepMsg = data.deletedCount
-            ? ('已清理 ' + data.deletedCount + ' 个过期文件，释放 ' + humanSize(data.freedBytes))
+            ? ('已清理 ' + data.deletedCount + ' 个过期文件，释放 ' + humanSize(data.freedBytes) + (data.compat ? '（兼容模式）' : ''))
             : ('没有过期文件（共扫描 ' + data.scanned + ' 个）');
-        keepMsgCls = 'ok';
+        keepMsgCls = data.failedCount ? 'err' : 'ok';
         setMsg($('panelMsg'), keepMsg, keepMsgCls);
         done = true;
     } catch (err) {
