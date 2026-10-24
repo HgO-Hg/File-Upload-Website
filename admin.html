@@ -402,6 +402,9 @@ function render() {
         const trs = rows.map(function (f) {
             const url = safeUrl(f.url);
             const expired = Boolean(f.expired);
+            // ⚠ 永久文件的 expiresAt 是 0，剩余秒数也是 0；如果直接走 remainText(0)
+            //   会被显示成"已过期"（误导）。这里单独判断成"永久"。
+            const forever = !expired && (!f.expiresAt || Number(f.expiresIn) === 0);
             const checked = selected.has(f.id) ? ' checked' : '';
             return '<tr>'
                 + '<td class="col-check"><input type="checkbox" class="chkbox row-check" data-id="'
@@ -411,7 +414,7 @@ function render() {
                 + '<td class="mono" data-label="大小">' + humanSize(f.size) + '</td>'
                 + '<td class="mono hide-sm" data-label="上传时间">' + esc(fmtTime(f.uploadedAt)) + '</td>'
                 + '<td data-label="剩余"><span class="tag' + (expired ? ' expired' : '') + '">'
-                + (expired ? '已过期' : esc(remainText(f.expiresIn))) + '</span></td>'
+                + (expired ? '已过期' : (forever ? '永久' : esc(remainText(f.expiresIn)))) + '</span></td>'
                 + '<td class="td-actions">'
                 + (url ? '<a class="dl" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">下载</a>' : '<span class="muted">—</span>')
                 + ' <button class="danger" data-del="' + esc(f.id) + '" data-name="' + esc(f.name || '')
