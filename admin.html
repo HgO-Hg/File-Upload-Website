@@ -87,9 +87,63 @@
         a.dl { color: #9ee7ff; text-decoration: none; }
         a.dl:hover { text-decoration: underline; }
         .foot { color: var(--muted); font-size: .8rem; text-align: center; margin-top: 24px; }
+
+        /* ---- 选择框与批量操作 ---- */
+        .chkbox { width: 18px; height: 18px; accent-color: #0a86ff; cursor: pointer; flex: 0 0 auto; }
+        .batch-bar {
+            margin-bottom: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed rgba(127, 191, 255, 0.18);
+        }
+        .batch-bar .count { font-variant-numeric: tabular-nums; }
+        .chk-label { display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+        td.col-check, th.col-check { width: 36px; text-align: center; padding-left: 4px; padding-right: 0; }
+
+        /* ---- 手机端：表格变卡片，按钮变大更好点 ---- */
         @media (max-width: 760px) {
-            th.hide-sm, td.hide-sm { display: none; }
-            td.name { max-width: 160px; }
+            body { padding: 14px 10px 32px; }
+            h1 { font-size: 1.25rem; }
+            .sub { font-size: .85rem; margin-bottom: 14px; }
+            .card { padding: 13px; border-radius: 12px; }
+            .row { gap: 8px; }
+            input[type=text], input[type=password], select, button { font-size: 1rem; padding: 10px 12px; }
+            .toolbar-gap { display: none; }
+            #stat { flex: 1 1 100%; order: 9; font-size: .82rem; }
+            .batch-bar { gap: 8px; }
+            .batch-bar .count { flex: 1 1 auto; }
+
+            table, thead, tbody, tr, th, td { display: block; width: 100%; }
+            thead { display: none; }
+            tbody tr {
+                position: relative;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 12px;
+                margin-bottom: 10px;
+                background: rgba(6, 18, 32, 0.55);
+            }
+            tbody tr:hover { background: rgba(6, 18, 32, 0.55); }
+            td { border: 0; padding: 3px 0; display: flex; gap: 8px; align-items: baseline; }
+            td::before {
+                content: attr(data-label);
+                color: var(--muted);
+                font-size: .8rem;
+                min-width: 58px;
+                flex: 0 0 auto;
+            }
+            td.col-check { position: absolute; top: 10px; right: 10px; padding: 0; width: auto; }
+            td.col-check::before { content: none; }
+            td.name { max-width: none; font-size: 1rem; font-weight: 600; padding-right: 30px; }
+            td.td-actions { margin-top: 8px; }
+            td.td-actions::before { content: none; }
+            td.td-actions button { padding: 8px 14px; font-size: .95rem; }
+            a.dl {
+                display: inline-block;
+                padding: 8px 14px;
+                border: 1px solid rgba(158, 231, 255, 0.4);
+                border-radius: 8px;
+            }
+            .hide-sm { display: none !important; }
         }
     </style>
 </head>
@@ -109,17 +163,24 @@
 
     <!-- ============ 管理台 ============ -->
     <div class="card hidden" id="panel">
-        <div class="row" style="margin-bottom:14px">
+        <div class="row" style="margin-bottom:10px">
             <label class="muted">分区
                 <select id="roomSel" style="margin-left:6px">
                     <option value="all" selected>全部</option>
                 </select>
             </label>
-            <input type="text" id="kw" placeholder="按文件名搜索" style="flex:1 1 180px">
+            <input type="text" id="kw" placeholder="按文件名搜索" style="flex:1 1 160px">
             <button id="refreshBtn">刷新</button>
             <span class="toolbar-gap"></span>
             <span class="muted" id="stat"></span>
             <button id="logoutBtn" class="danger">退出</button>
+        </div>
+
+        <div class="row batch-bar">
+            <label class="muted chk-label"><input type="checkbox" class="chkbox" id="checkAll"> 全选本页</label>
+            <span class="muted count" id="selInfo">已选 0 项</span>
+            <button id="batchDelBtn" class="danger" disabled>批量删除</button>
+            <button id="purgeBtn">一键清理过期</button>
         </div>
 
         <div id="tableBox"></div>
@@ -173,6 +234,8 @@ let offset = 0;
 let lastTotal = 0;
 let lastFiles = [];
 let busy = false;
+/** 当前选中的文件 id（只保留当前页/当前筛选里存在的，见 render()） */
+const selected = new Set();
 
 const $ = (id) => document.getElementById(id);
 
@@ -317,34 +380,48 @@ async function loadFiles(newOffset) {
 }
 
 /* ---------- 渲染 ---------- */
-function render() {
+/** 当前页 + 当前搜索词过滤后的行（批量操作只作用于这些可见行） */
+function visibleRows() {
     const kw = $('kw').value.trim().toLowerCase();
-    const rows = kw ? lastFiles.filter(f => String(f.name || '').toLowerCase().includes(kw)) : lastFiles;
+    return kw ? lastFiles.filter(f => String(f.name || '').toLowerCase().includes(kw)) : lastFiles;
+}
+
+function render() {
+    const rows = visibleRows();
     const bytes = rows.reduce((s, f) => s + (Number(f.size) || 0), 0);
     $('stat').textContent = '共 ' + lastTotal + ' 个文件 · 本页 ' + rows.length + ' 个（' + humanSize(bytes) + '）';
 
+    // 只保留当前可见行里的选中项：翻页/换分区/搜索后不残留"看不见的选中"
+    const alive = new Set(rows.map(f => f.id));
+    for (const id of Array.from(selected)) { if (!alive.has(id)) selected.delete(id); }
+
     const box = $('tableBox');
     if (!rows.length) {
-        box.innerHTML = '<div class="empty">' + (kw ? '没有匹配的文件' : '这个分区还没有文件') + '</div>';
+        box.innerHTML = '<div class="empty">' + ($('kw').value.trim() ? '没有匹配的文件' : '这个分区还没有文件') + '</div>';
     } else {
         const trs = rows.map(function (f) {
             const url = safeUrl(f.url);
             const expired = Boolean(f.expired);
+            const checked = selected.has(f.id) ? ' checked' : '';
             return '<tr>'
-                + '<td><span class="tag">' + esc(f.room || '—') + '</span></td>'
-                + '<td class="name">' + esc(f.name || '(未命名)') + '</td>'
-                + '<td class="mono">' + humanSize(f.size) + '</td>'
-                + '<td class="mono hide-sm">' + esc(fmtTime(f.uploadedAt)) + '</td>'
-                + '<td><span class="tag' + (expired ? ' expired' : '') + '">'
+                + '<td class="col-check"><input type="checkbox" class="chkbox row-check" data-id="'
+                + esc(f.id) + '"' + checked + '></td>'
+                + '<td data-label="分区"><span class="tag">' + esc(f.room || '—') + '</span></td>'
+                + '<td class="name" data-label="文件名">' + esc(f.name || '(未命名)') + '</td>'
+                + '<td class="mono" data-label="大小">' + humanSize(f.size) + '</td>'
+                + '<td class="mono hide-sm" data-label="上传时间">' + esc(fmtTime(f.uploadedAt)) + '</td>'
+                + '<td data-label="剩余"><span class="tag' + (expired ? ' expired' : '') + '">'
                 + (expired ? '已过期' : esc(remainText(f.expiresIn))) + '</span></td>'
-                + '<td style="white-space:nowrap">'
+                + '<td class="td-actions">'
                 + (url ? '<a class="dl" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">下载</a>' : '<span class="muted">—</span>')
-                + ' <button class="danger" data-del="' + esc(f.id) + '" data-name="' + esc(f.name || '') + '" style="padding:4px 10px;font-size:.82rem">删除</button>'
+                + ' <button class="danger" data-del="' + esc(f.id) + '" data-name="' + esc(f.name || '')
+                + '" style="padding:4px 10px;font-size:.82rem">删除</button>'
                 + '</td>'
                 + '</tr>';
         });
         box.innerHTML = '<table><thead><tr>'
-            + '<th>分区</th><th>文件名</th><th>大小</th><th class="hide-sm">上传时间</th><th>剩余</th><th>操作</th>'
+            + '<th class="col-check"></th><th>分区</th><th>文件名</th><th>大小</th>'
+            + '<th class="hide-sm">上传时间</th><th>剩余</th><th>操作</th>'
             + '</tr></thead><tbody>' + trs.join('') + '</tbody></table>';
 
         // 事件用委托绑定，避免文件名里的特殊字符破坏内联事件
@@ -353,13 +430,33 @@ function render() {
                 deleteFile(btn.getAttribute('data-del'), btn.getAttribute('data-name'));
             });
         });
+        box.querySelectorAll('.row-check').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                const id = cb.getAttribute('data-id');
+                if (cb.checked) selected.add(id); else selected.delete(id);
+                syncSelectionUI();
+            });
+        });
     }
+
+    syncSelectionUI();
 
     const pageNo = Math.floor(offset / PAGE_SIZE) + 1;
     const pages = Math.max(1, Math.ceil(lastTotal / PAGE_SIZE));
     $('pageInfo').textContent = '第 ' + pageNo + ' / ' + pages + ' 页';
     $('prevBtn').disabled = offset <= 0;
     $('nextBtn').disabled = offset + PAGE_SIZE >= lastTotal;
+}
+
+/** 同步"已选 N 项"、批量按钮可用状态、全选框的三态 */
+function syncSelectionUI() {
+    const rows = visibleRows();
+    const n = selected.size;
+    $('selInfo').textContent = '已选 ' + n + ' 项';
+    $('batchDelBtn').disabled = n === 0 || busy;
+    const all = $('checkAll');
+    all.checked = rows.length > 0 && rows.every(f => selected.has(f.id));
+    all.indeterminate = n > 0 && !all.checked;
 }
 
 /* ---------- 删除 ---------- */
@@ -382,6 +479,7 @@ async function deleteFile(id, name) {
             return;
         }
         setMsg($('panelMsg'), '已删除：' + (data.name || id), 'ok');
+        selected.delete(id);
         deleted = true;
     } catch (err) {
         setMsg($('panelMsg'), '删除失败：' + (err && err.message ? err.message : String(err)), 'err');
@@ -394,15 +492,92 @@ async function deleteFile(id, name) {
     if (deleted) await loadFiles(offset);
 }
 
+/* ---------- 批量删除 ---------- */
+async function deleteSelected() {
+    if (!selected.size || busy) return;
+    const ids = Array.from(selected);
+    if (!confirm('确定删除选中的 ' + ids.length + ' 个文件吗？\n\n删除后下载链接立即失效，且无法恢复。')) return;
+    busy = true;
+    setMsg($('panelMsg'), '正在删除 ' + ids.length + ' 个文件…');
+    let done = false;
+    try {
+        const res = await fetch(api('/api/admin/delete-batch'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ ids: ids })
+        });
+        if (res.status === 401) { setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('panelMsg'), data.error || ('批量删除失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        selected.clear();
+        setMsg($('panelMsg'),
+            '已删除 ' + data.deletedCount + ' 个' + (data.failedCount ? '，失败 ' + data.failedCount + ' 个' : ''),
+            data.failedCount ? 'err' : 'ok');
+        done = true;
+    } catch (err) {
+        setMsg($('panelMsg'), '批量删除失败：' + (err && err.message ? err.message : String(err)), 'err');
+    } finally {
+        busy = false;
+    }
+    if (done) await loadFiles(offset);
+}
+
+/* ---------- 一键清理过期 ---------- */
+async function purgeExpired() {
+    if (busy) return;
+    if (!confirm('清理所有分区里已过期的文件？\n\n永久保存的文件不会被删除，此操作不可撤销。')) return;
+    busy = true;
+    setMsg($('panelMsg'), '正在扫描过期文件…');
+    let done = false;
+    try {
+        const res = await fetch(api('/api/admin/purge-expired'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({})
+        });
+        if (res.status === 401) { setMsg($('panelMsg'), '登录已失效，请重新登录', 'err'); logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('panelMsg'), data.error || ('清理失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        setMsg($('panelMsg'), data.deletedCount
+            ? ('已清理 ' + data.deletedCount + ' 个过期文件，释放 ' + humanSize(data.freedBytes))
+            : ('没有过期文件（共扫描 ' + data.scanned + ' 个）'), 'ok');
+        done = true;
+    } catch (err) {
+        setMsg($('panelMsg'), '清理失败：' + (err && err.message ? err.message : String(err)), 'err');
+    } finally {
+        busy = false;
+    }
+    if (done) await loadFiles(offset);
+}
+
 /* ---------- 事件 ---------- */
 $('loginBtn').addEventListener('click', login);
 $('pwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
 $('refreshBtn').addEventListener('click', function () { loadFiles(offset); });
 $('logoutBtn').addEventListener('click', logout);
-$('roomSel').addEventListener('change', function () { loadFiles(0); });
+$('roomSel').addEventListener('change', function () {
+    selected.clear();                 // 换分区时清空选择，避免误删到别的分区的文件
+    loadFiles(0);
+});
 $('kw').addEventListener('input', function () { render(); });
 $('prevBtn').addEventListener('click', function () { loadFiles(Math.max(0, offset - PAGE_SIZE)); });
 $('nextBtn').addEventListener('click', function () { loadFiles(offset + PAGE_SIZE); });
+
+// 全选本页（作用于当前筛选后可见的行）
+$('checkAll').addEventListener('change', function () {
+    const rows = visibleRows();
+    if ($('checkAll').checked) rows.forEach(f => selected.add(f.id));
+    else rows.forEach(f => selected.delete(f.id));
+    render();
+});
+$('batchDelBtn').addEventListener('click', deleteSelected);
+$('purgeBtn').addEventListener('click', purgeExpired);
 
 /* 启动：如果本标签页里已有令牌（刷新页面），直接进入 */
 (function boot() {
