@@ -99,6 +99,22 @@
         .chk-label { display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
         td.col-check, th.col-check { width: 36px; text-align: center; padding-left: 4px; padding-right: 0; }
 
+        /* ---- IP 与黑名单 ---- */
+        .ip { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: .86rem; word-break: break-all; }
+        .bl-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 11px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            background: rgba(6, 18, 32, 0.45);
+        }
+        .bl-item .ip { flex: 1 1 auto; }
+        .bl-item .bl-meta { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+        .bl-empty { color: var(--muted); padding: 14px 4px; text-align: center; }
+
         /* ---- 手机端：表格变卡片，按钮变大更好点 ---- */
         @media (max-width: 760px) {
             body { padding: 14px 10px 32px; }
@@ -180,6 +196,7 @@
             <label class="muted chk-label"><input type="checkbox" class="chkbox" id="checkAll"> 全选本页</label>
             <span class="muted count" id="selInfo">已选 0 项</span>
             <button id="batchDelBtn" class="danger" disabled>批量删除</button>
+            <button id="batchBanBtn" class="danger" disabled>拉黑选中 IP</button>
             <button id="purgeBtn">一键清理过期</button>
         </div>
 
@@ -192,6 +209,29 @@
             <span class="muted" id="pageInfo"></span>
         </div>
         <div class="msg" id="panelMsg"></div>
+    </div>
+
+    <!-- ============ IP 黑名单 ============ -->
+    <div class="card hidden" id="blCard">
+        <div class="row" style="margin-bottom:12px">
+            <strong>IP 黑名单</strong>
+            <span class="muted" id="blCount">0 条</span>
+            <span class="toolbar-gap"></span>
+            <button id="blRemoveBtn" class="danger" disabled>移除选中</button>
+        </div>
+
+        <div class="row" style="margin-bottom:12px">
+            <input type="text" id="blIp" placeholder="要拉黑的 IP，如 1.2.3.4" style="flex:1 1 180px">
+            <input type="text" id="blNote" placeholder="原因（可选）" style="flex:1 1 140px">
+            <button class="primary" id="blAddBtn">添加</button>
+        </div>
+
+        <label class="muted chk-label" style="margin-bottom:10px">
+            <input type="checkbox" class="chkbox" id="blCheckAll"> 全选
+        </label>
+
+        <div id="blList"></div>
+        <div class="msg" id="blMsg"></div>
     </div>
 
     <div class="foot">文件中转站 · 站主控制台</div>
@@ -236,6 +276,12 @@ let lastFiles = [];
 let busy = false;
 /** 当前选中的文件 id（只保留当前页/当前筛选里存在的，见 render()） */
 const selected = new Set();
+/** 黑名单里被勾选的 IP */
+const blSelected = new Set();
+/** 最近一次拉取到的黑名单 */
+let blacklist = [];
+/** 后端是否支持黑名单接口（旧版本后端返回 404/405 时界面降级） */
+let blacklistSupported = true;
 
 const $ = (id) => document.getElementById(id);
 
@@ -326,7 +372,11 @@ async function login() {
         $('pwd').value = '';
         setMsg($('loginMsg'), '');
         enterPanel(data.rooms);
-        await loadFiles(0);
+        // 两个请求并发：黑名单和文件列表互不依赖，
+        // 之前写成 await loadFiles() 再 await loadBlacklist()，
+        // 只要列表请求卡住，黑名单就永远不加载（实测过）。
+        loadFiles(0);
+        loadBlacklist();
     } catch (err) {
         setMsg($('loginMsg'), '无法连接服务：' + (err && err.message ? err.message : String(err)), 'err');
     } finally {
@@ -337,6 +387,7 @@ async function login() {
 function enterPanel(rooms) {
     $('loginCard').classList.add('hidden');
     $('panel').classList.remove('hidden');
+    $('blCard').classList.remove('hidden');
     const sel = $('roomSel');
     const cur = sel.value;
     if (Array.isArray(rooms) && rooms.length) {
@@ -359,6 +410,7 @@ function logout() {
     token = '';
     try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { }
     $('panel').classList.add('hidden');
+    $('blCard').classList.add('hidden');
     $('loginCard').classList.remove('hidden');
     setMsg($('loginMsg'), '已退出', 'ok');
 }
@@ -431,6 +483,11 @@ function render() {
                 + esc(f.id) + '"' + checked + '></td>'
                 + '<td data-label="分区"><span class="tag">' + esc(f.room || '—') + '</span></td>'
                 + '<td class="name" data-label="文件名">' + esc(f.name || '(未命名)') + '</td>'
+                + '<td class="ip" data-label="IP">'
+                + (f.ip
+                    ? esc(f.ip) + (f.blocked ? ' <span class="tag expired">已拉黑</span>' : '')
+                    : '<span class="muted">—</span>')
+                + '</td>'
                 + '<td class="mono" data-label="大小">' + humanSize(f.size) + '</td>'
                 + '<td class="mono hide-sm" data-label="上传时间">' + esc(fmtTime(f.uploadedAt)) + '</td>'
                 + '<td data-label="剩余"><span class="tag' + (expired ? ' expired' : '') + '">'
@@ -439,11 +496,14 @@ function render() {
                 + (url ? '<a class="dl" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">下载</a>' : '<span class="muted">—</span>')
                 + ' <button class="danger" data-del="' + esc(f.id) + '" data-name="' + esc(f.name || '')
                 + '" style="padding:4px 10px;font-size:.82rem">删除</button>'
+                + (f.ip && !f.blocked
+                    ? ' <button class="danger" data-ban="' + esc(f.ip) + '" style="padding:4px 10px;font-size:.82rem">拉黑</button>'
+                    : '')
                 + '</td>'
                 + '</tr>';
         });
         box.innerHTML = '<table><thead><tr>'
-            + '<th class="col-check"></th><th>分区</th><th>文件名</th><th>大小</th>'
+            + '<th class="col-check"></th><th>分区</th><th>文件名</th><th>IP</th><th>大小</th>'
             + '<th class="hide-sm">上传时间</th><th>剩余</th><th>操作</th>'
             + '</tr></thead><tbody>' + trs.join('') + '</tbody></table>';
 
@@ -451,6 +511,12 @@ function render() {
         box.querySelectorAll('button[data-del]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 deleteFile(btn.getAttribute('data-del'), btn.getAttribute('data-name'));
+            });
+        });
+        box.querySelectorAll('button[data-ban]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const ip = btn.getAttribute('data-ban');
+                addToBlacklist([ip], '来自文件列表');
             });
         });
         box.querySelectorAll('.row-check').forEach(function (cb) {
@@ -477,6 +543,9 @@ function syncSelectionUI() {
     const n = selected.size;
     $('selInfo').textContent = '已选 ' + n + ' 项';
     $('batchDelBtn').disabled = n === 0 || busy;
+    // 选中项里至少有一个"有 IP 且还没被拉黑"的文件时，才允许批量拉黑
+    const bannable = rows.filter(f => selected.has(f.id) && f.ip && !f.blocked).length;
+    $('batchBanBtn').disabled = !blacklistSupported || bannable === 0 || busy;
     const all = $('checkAll');
     all.checked = rows.length > 0 && rows.every(f => selected.has(f.id));
     all.indeterminate = n > 0 && !all.checked;
@@ -653,6 +722,136 @@ async function purgeExpired() {
     if (done && keepMsg) setMsg($('panelMsg'), keepMsg, keepMsgCls);
 }
 
+/* ---------- IP 黑名单 ---------- */
+async function loadBlacklist() {
+    if (!token) return;
+    try {
+        const res = await fetchRetry(api('/api/admin/blacklist'), { headers: { Authorization: 'Bearer ' + token } });
+        if (res.status === 401) { logout(); return; }
+        if (res.status === 404 || res.status === 405) {
+            // 后端还是旧版本（没有黑名单接口）→ 界面降级，不刷一堆报错
+            blacklistSupported = false;
+            blacklist = [];
+            renderBlacklist();
+            setMsg($('blMsg'), '当前后端版本还不支持黑名单，需要更新后端后才会生效', 'err');
+            return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('blMsg'), data.error || ('读取黑名单失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        blacklistSupported = true;
+        blacklist = Array.isArray(data.ips) ? data.ips : [];
+        // 清掉已经不存在的勾选
+        const alive = new Set(blacklist.map(x => x.ip));
+        for (const ip of Array.from(blSelected)) { if (!alive.has(ip)) blSelected.delete(ip); }
+        renderBlacklist();
+    } catch (e) {
+        setMsg($('blMsg'), '读取黑名单失败：' + (e && e.message ? e.message : String(e)), 'err');
+    }
+}
+
+function renderBlacklist() {
+    $('blCount').textContent = blacklist.length + ' 条';
+    const box = $('blList');
+    if (!blacklist.length) {
+        box.innerHTML = '<div class="bl-empty">还没有拉黑任何 IP</div>';
+    } else {
+        box.innerHTML = blacklist.map(function (x) {
+            const checked = blSelected.has(x.ip) ? ' checked' : '';
+            return '<div class="bl-item">'
+                + '<input type="checkbox" class="chkbox bl-check" data-ip="' + esc(x.ip) + '"' + checked + '>'
+                + '<span class="ip">' + esc(x.ip) + '</span>'
+                + (x.note ? '<span class="bl-meta">' + esc(x.note) + '</span>' : '')
+                + '<span class="bl-meta">' + esc(x.addedAt ? fmtTime(x.addedAt) : '') + '</span>'
+                + '</div>';
+        }).join('');
+        box.querySelectorAll('.bl-check').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                const ip = cb.getAttribute('data-ip');
+                if (cb.checked) blSelected.add(ip); else blSelected.delete(ip);
+                syncBlUI();
+            });
+        });
+    }
+    syncBlUI();
+}
+
+function syncBlUI() {
+    // 后端不支持时把入口全部禁用，避免用户点了没反应
+    $('blRemoveBtn').disabled = !blacklistSupported || blSelected.size === 0 || busy;
+    $('blAddBtn').disabled = !blacklistSupported;
+    const all = $('blCheckAll');
+    all.checked = blacklist.length > 0 && blacklist.every(x => blSelected.has(x.ip));
+    all.indeterminate = blSelected.size > 0 && !all.checked;
+}
+
+async function addToBlacklist(ips, note) {
+    const list = (ips || []).filter(Boolean);
+    if (!list.length || busy) return;
+    if (!blacklistSupported) {
+        setMsg($('blMsg'), '当前后端版本还不支持黑名单，需要更新后端后才会生效', 'err');
+        return;
+    }
+    busy = true;
+    let okMsg = '';
+    setMsg($('blMsg'), '正在添加…');
+    try {
+        const res = await fetchRetry(api('/api/admin/blacklist/add'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ ips: list, note: note || '' })
+        });
+        if (res.status === 401) { logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('blMsg'), data.error || ('添加失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        okMsg = '已拉黑 ' + data.addedCount + ' 个 IP'
+            + (data.skippedCount ? '（跳过 ' + data.skippedCount + ' 个重复或非法）' : '');
+    } catch (e) {
+        setMsg($('blMsg'), '添加失败：' + (e && e.message ? e.message : String(e)), 'err');
+    } finally {
+        busy = false;
+    }
+    await loadBlacklist();
+    await loadFiles(offset);            // 让文件列表的"已拉黑"标记立即更新
+    if (okMsg) setMsg($('blMsg'), okMsg, 'ok');
+}
+
+async function removeFromBlacklist(ips) {
+    const list = (ips || []).filter(Boolean);
+    if (!list.length || busy) return;
+    if (!confirm('确定把这 ' + list.length + ' 个 IP 从黑名单移除吗？\n\n移除后它们可以重新上传。')) return;
+    busy = true;
+    let okMsg = '';
+    setMsg($('blMsg'), '正在移除…');
+    try {
+        const res = await fetchRetry(api('/api/admin/blacklist/remove'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ ips: list })
+        });
+        if (res.status === 401) { logout(); return; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            setMsg($('blMsg'), data.error || ('移除失败（HTTP ' + res.status + '）'), 'err');
+            return;
+        }
+        blSelected.clear();
+        okMsg = '已移除 ' + data.removedCount + ' 个 IP，剩余 ' + data.total + ' 条';
+    } catch (e) {
+        setMsg($('blMsg'), '移除失败：' + (e && e.message ? e.message : String(e)), 'err');
+    } finally {
+        busy = false;
+    }
+    await loadBlacklist();
+    await loadFiles(offset);
+    if (okMsg) setMsg($('blMsg'), okMsg, 'ok');
+}
+
 /* ---------- 事件 ---------- */
 $('loginBtn').addEventListener('click', login);
 $('pwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
@@ -676,6 +875,33 @@ $('checkAll').addEventListener('change', function () {
 $('batchDelBtn').addEventListener('click', deleteSelected);
 $('purgeBtn').addEventListener('click', purgeExpired);
 
+// ---- IP 黑名单 ----
+$('batchBanBtn').addEventListener('click', function () {
+    const ips = Array.from(new Set(
+        lastFiles.filter(f => selected.has(f.id) && f.ip && !f.blocked).map(f => f.ip)
+    ));
+    if (!ips.length) { setMsg($('panelMsg'), '选中的文件里没有可拉黑的 IP', 'err'); return; }
+    addToBlacklist(ips, '来自文件列表');
+});
+$('blAddBtn').addEventListener('click', function () {
+    const ip = $('blIp').value.trim();
+    if (!ip) { setMsg($('blMsg'), '请输入要拉黑的 IP', 'err'); return; }
+    const note = $('blNote').value.trim();
+    addToBlacklist([ip], note).then(function () {
+        $('blIp').value = ''; $('blNote').value = '';
+    });
+});
+$('blIp').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('blAddBtn').click(); });
+$('blNote').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('blAddBtn').click(); });
+$('blRemoveBtn').addEventListener('click', function () {
+    removeFromBlacklist(Array.from(blSelected));
+});
+$('blCheckAll').addEventListener('change', function () {
+    if ($('blCheckAll').checked) blacklist.forEach(x => blSelected.add(x.ip));
+    else blacklist.forEach(x => blSelected.delete(x.ip));
+    renderBlacklist();
+});
+
 /* 启动：如果本标签页里已有令牌（刷新页面），直接进入 */
 (function boot() {
     try {
@@ -685,6 +911,7 @@ $('purgeBtn').addEventListener('click', purgeExpired);
             // 先验证令牌是否仍有效：拉一页数据，401 会自动退回登录
             enterPanel(null);
             loadFiles(0);
+            loadBlacklist();
         }
     } catch (e) { /* 忽略 */ }
 })();
